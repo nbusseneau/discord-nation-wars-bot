@@ -182,7 +182,7 @@ async def add(ctx: commands.Context, nation: to_title):
 
     bot.guild_cache[ctx.guild].add_nation(nation, role, category, emoji)
     bot.save_config()
-    await ctx.send(f"✅ added nation: {nation} {emoji}")
+    await ctx.send(f"✅ added: {nation} {str(emoji)}")
 
 
 @add.autocomplete('nation')
@@ -194,7 +194,7 @@ async def add_autocomplete(interaction: discord.Interaction, current: str) -> li
 @nation.command()
 async def remove(ctx: commands.Context, nation: to_title):
     if not nation in bot.guild_cache[ctx.guild].registered_nations:
-        await ctx.send(f"ℹ️ nation '{nation}' was not registered -- nothing to do!")
+        await ctx.send(f"ℹ️ '{nation}' is not registered -- nothing to do")
         return
     
     discord_registered_nation = bot.guild_cache[ctx.guild].registered_nations[nation]
@@ -214,7 +214,7 @@ async def remove(ctx: commands.Context, nation: to_title):
 
     bot.guild_cache[ctx.guild].remove_nation(nation)
     bot.save_config()
-    await ctx.send(f"✅ removed nation: {nation} {emoji}")
+    await ctx.send(f"✅ removed: {nation} {str(emoji)}")
 
 
 @remove.autocomplete('nation')
@@ -228,7 +228,8 @@ async def nation_error(ctx, error):
     if isinstance(error, commands.MissingRole):
         await ctx.send("⛔ Check your privileges!")
     else:
-        raise error
+        logger.exception(error)
+        await ctx.send("⚠️ Something went wrong -- check the logs... 😖")
 
 
 if __name__ == "__main__":
