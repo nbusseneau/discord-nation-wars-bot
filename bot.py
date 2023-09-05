@@ -160,6 +160,9 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
     if not nation in nations:
         await ctx.send(f"❌ invalid nation '{nation}' -- pick a valid nation from the list")
         return
+
+    await ctx.defer()
+
     role = await ctx.guild.create_role(name=nation, hoist=True, mentionable=True)
 
     overwrites = {
@@ -196,7 +199,9 @@ async def remove(ctx: commands.Context, nation: to_title) -> None:
     if not nation in bot.guild_cache[ctx.guild].registered_nations:
         await ctx.send(f"ℹ️ '{nation}' is not registered -- nothing to do")
         return
-    
+
+    await ctx.defer()
+
     discord_registered_nation = bot.guild_cache[ctx.guild].registered_nations[nation]
     await discord_registered_nation.role.delete()
 
