@@ -59,7 +59,7 @@ class GuildCache():
 class CustomBot(commands.Bot):
     guild_cache: dict[discord.Guild, GuildCache]
 
-    def __init__(self, config_filepath: str='config.json', *args, **kwargs):
+    def __init__(self, config_filepath: str='config.json', *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config_file = Path(config_filepath)
         self.bot_config = config.BotConfig.from_json(self.config_file.read_bytes())
@@ -75,7 +75,7 @@ class CustomBot(commands.Bot):
             nation_picker_message = await nation_picker_channel.fetch_message(guild_config.nation_picker_message_id)
             self.guild_cache[guild] = GuildCache(guild, guild_config, nation_picker_message)
 
-    async def on_guild_join(self, guild: discord.Guild):
+    async def on_guild_join(self, guild: discord.Guild) -> None:
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(send_messages=False),
             guild.me: discord.PermissionOverwrite(send_messages=True),
@@ -86,7 +86,7 @@ class CustomBot(commands.Bot):
         self.guild_cache[guild] = GuildCache(guild, guild_config, nation_picker_message)
         self.save_config()
 
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.user_id == self.user.id:
             return
 
@@ -106,7 +106,7 @@ class CustomBot(commands.Bot):
         except discord.HTTPException:
             pass
 
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
         if payload.user_id == self.user.id:
             return
 
@@ -142,20 +142,21 @@ intents.members = True
 intents.message_content = True
 bot = CustomBot(command_prefix='$', intents=intents)
 
+
 @bot.hybrid_group()
 @commands.guild_only()
 @commands.has_permissions(manage_channels=True, manage_roles=True, manage_messages=True)
 @app_commands.default_permissions(manage_channels=True, manage_roles=True, manage_messages=True)
-async def nation(ctx):
+async def nation(ctx) -> None:
     pass
 
 
-def to_title(arg: str):
+def to_title(arg: str) -> str:
     return arg.title()
 
 
 @nation.command()
-async def add(ctx: commands.Context, nation: to_title):
+async def add(ctx: commands.Context, nation: to_title) -> None:
     if not nation in nations:
         await ctx.send(f"❌ invalid nation '{nation}' -- pick a valid nation from the list")
         return
@@ -192,7 +193,7 @@ async def add_autocomplete(interaction: discord.Interaction, current: str) -> li
 
 
 @nation.command()
-async def remove(ctx: commands.Context, nation: to_title):
+async def remove(ctx: commands.Context, nation: to_title) -> None:
     if not nation in bot.guild_cache[ctx.guild].registered_nations:
         await ctx.send(f"ℹ️ '{nation}' is not registered -- nothing to do")
         return
@@ -224,7 +225,7 @@ async def remove_autocomplete(interaction: discord.Interaction, current: str) ->
 
 @add.error
 @remove.error
-async def nation_error(ctx, error):
+async def nation_error(ctx: commands.Context, error: commands.CommandError) -> None:
     if isinstance(error, commands.MissingRole):
         await ctx.send("⛔ Check your privileges!")
     else:
