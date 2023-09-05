@@ -1,0 +1,9 @@
+version: "3.7"
+services:
+  discord-nation-wars-bot:
+    container_name: discord-nation-wars-bot
+    image: discord-nation-wars-bot
+    build: .
+    restart: always
+    volumes:
+      - ./config.json:/root/config.json
