@@ -209,7 +209,7 @@ async def remove(ctx: commands.Context, nation: to_title) -> None:
 
     emoji = discord_registered_nation.emoji
     try:
-        await bot.guild_cache[ctx.guild].nation_picker_message.clear_reaction(emoji)
+        await bot.guild_cache[ctx.guild].nation_picker_message.remove_reaction(emoji, bot.user)
     except discord.NotFound:
         pass
 
