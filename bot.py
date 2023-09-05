@@ -160,8 +160,6 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
     if not nation in nations:
         await ctx.send(f"❌ invalid nation '{nation}' -- pick a valid nation from the list")
         return
-    
-    emoji = discord.PartialEmoji(name=nations[nation])
     role = await ctx.guild.create_role(name=nation, hoist=True, mentionable=True)
 
     overwrites = {
@@ -174,8 +172,9 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
     await ctx.guild.create_voice_channel(name="players", category=category)
     await ctx.guild.create_voice_channel(name="spectators", category=category)
 
+    emoji = discord.PartialEmoji(name=nations[nation])
     nation_picker_message = bot.guild_cache[ctx.guild].nation_picker_message
-    reaction = discord.utils.get(nation_picker_message.reactions, emoji=emoji)
+    reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
     if reaction:
         async for user in reaction.users():
             await user.add_roles(role)
