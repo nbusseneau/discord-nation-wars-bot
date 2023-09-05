@@ -1,10 +1,14 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import logging
 import json
 from pathlib import Path
 
 import config
+
+
+logger = logging.getLogger()
 
 
 nations_file = Path('nations.json')
@@ -228,4 +232,4 @@ async def nation_error(ctx, error):
 
 
 if __name__ == "__main__":
-    bot.run(bot.bot_config.token)
+    bot.run(bot.bot_config.token, log_level=logging.INFO, root_logger=True)
