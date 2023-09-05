@@ -65,6 +65,12 @@ class CustomBot(commands.Bot):
         self.bot_config = config.BotConfig.from_json(self.config_file.read_bytes())
         self.guild_cache = {}
 
+    def save_config(self) -> None:
+        self.bot_config = config.BotConfig(self.bot_config.token, {})
+        for guild, discord_config in self.guild_cache.items():
+            self.bot_config.guilds[guild.id] = discord_config.guild_config
+        self.config_file.write_text(self.bot_config.to_json(indent=2))
+
     async def setup_hook(self) -> None:
         await self.tree.sync()
 
@@ -90,11 +96,11 @@ class CustomBot(commands.Bot):
         if payload.user_id == self.user.id:
             return
 
-        guild = self.get_guild(payload.guild_id)
+        guild = discord.utils.get(self.guilds, id=payload.guild_id)
         if guild is None or not guild in self.guild_cache:
             return
 
-        if payload.message_id != self.bot_config.guilds[guild.id].nation_picker_message_id:
+        if payload.message_id != self.guild_cache[guild].nation_picker_message.id:
             return
 
         role = next((nation.role for nation in self.guild_cache[guild].registered_nations.values() if payload.emoji == nation.emoji), None)
@@ -110,11 +116,11 @@ class CustomBot(commands.Bot):
         if payload.user_id == self.user.id:
             return
 
-        guild = self.get_guild(payload.guild_id)
+        guild = discord.utils.get(self.guilds, id=payload.guild_id)
         if guild is None or not guild in self.guild_cache:
             return
 
-        if payload.message_id != self.bot_config.guilds[guild.id].nation_picker_message_id:
+        if payload.message_id != self.guild_cache[guild].nation_picker_message.id:
             return
 
         role = next((nation.role for nation in self.guild_cache[guild].registered_nations.values() if payload.emoji == nation.emoji), None)
@@ -129,12 +135,6 @@ class CustomBot(commands.Bot):
             await member.remove_roles(role)
         except discord.HTTPException:
             pass
-
-    def save_config(self) -> None:
-        self.bot_config = config.BotConfig(self.bot_config.token, {})
-        for guild, discord_config in self.guild_cache.items():
-            self.bot_config.guilds[guild.id] = discord_config.guild_config
-        self.config_file.write_text(self.bot_config.to_json(indent=2))
 
 
 intents = discord.Intents.default()
@@ -175,15 +175,16 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
     await ctx.guild.create_voice_channel(name="players", category=category)
     await ctx.guild.create_voice_channel(name="spectators", category=category)
 
+    guild_cache = bot.guild_cache[ctx.guild]
     emoji = discord.PartialEmoji(name=nations[nation])
-    nation_picker_message = bot.guild_cache[ctx.guild].nation_picker_message
+    nation_picker_message = guild_cache.nation_picker_message
     reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
     if reaction:
         async for user in reaction.users():
             await user.add_roles(role)
     await nation_picker_message.add_reaction(emoji)
 
-    bot.guild_cache[ctx.guild].add_nation(nation, role, category, emoji)
+    guild_cache.add_nation(nation, role, category, emoji)
     bot.save_config()
     await ctx.send(f"✅ added: {nation} {str(emoji)}")
 
@@ -196,35 +197,32 @@ async def add_autocomplete(interaction: discord.Interaction, current: str) -> li
 
 @nation.command()
 async def remove(ctx: commands.Context, nation: to_title) -> None:
-    if not nation in bot.guild_cache[ctx.guild].registered_nations:
+    guild_cache = bot.guild_cache[ctx.guild]
+    if not nation in guild_cache.registered_nations:
         await ctx.send(f"ℹ️ '{nation}' is not registered -- nothing to do")
         return
 
     await ctx.defer()
 
-    discord_registered_nation = bot.guild_cache[ctx.guild].registered_nations[nation]
-    await discord_registered_nation.role.delete()
+    nation_cache = guild_cache.registered_nations[nation]
+    await nation_cache.role.delete()
 
-    category = discord.utils.get(ctx.guild.categories, name=nation)
-    if category:
-        for channel in category.channels:
-            await channel.delete()
-        await category.delete()
+    category = nation_cache.category
+    for channel in category.channels:
+        await channel.delete()
+    await category.delete()
 
-    emoji = discord_registered_nation.emoji
-    try:
-        await bot.guild_cache[ctx.guild].nation_picker_message.remove_reaction(emoji, bot.user)
-    except discord.NotFound:
-        pass
+    emoji = nation_cache.emoji
+    await guild_cache.nation_picker_message.remove_reaction(emoji, bot.user)
 
-    bot.guild_cache[ctx.guild].remove_nation(nation)
+    guild_cache.remove_nation(nation)
     bot.save_config()
     await ctx.send(f"✅ removed: {nation} {str(emoji)}")
 
 
 @remove.autocomplete('nation')
 async def remove_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    return [app_commands.Choice(name=f"{nation} {discord_registered_nation.emoji}", value=nation) for nation, discord_registered_nation in bot.guild_cache[interaction.guild].registered_nations.items()]
+    return [app_commands.Choice(name=f"{nation} {nation_cache.emoji}", value=nation) for nation, nation_cache in bot.guild_cache[interaction.guild].registered_nations.items()]
 
 
 @add.error
@@ -238,4 +236,4 @@ async def nation_error(ctx: commands.Context, error: commands.CommandError) -> N
 
 
 if __name__ == "__main__":
-    bot.run(bot.bot_config.token, log_level=logging.INFO, root_logger=True)
+    bot.run(token=bot.bot_config.token, log_level=logging.INFO, root_logger=True)
