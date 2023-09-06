@@ -177,12 +177,13 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
 
     guild_cache = bot.guild_cache[ctx.guild]
     emoji = discord.PartialEmoji(name=nations[nation])
-    nation_picker_message = guild_cache.nation_picker_message
+    nation_picker_message = await guild_cache.nation_picker_message.channel.fetch_message(guild_cache.nation_picker_message.id)
     reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
     if reaction:
         async for user in reaction.users():
             await user.add_roles(role)
     await nation_picker_message.add_reaction(emoji)
+    guild_cache.nation_picker_message = nation_picker_message
 
     guild_cache.add_nation(nation, role, category, emoji)
     bot.save_config()
