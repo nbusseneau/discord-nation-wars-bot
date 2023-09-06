@@ -12,8 +12,8 @@ import config
 logger = logging.getLogger()
 
 
-nations_file = Path("nations.json")
-nations: dict[str, str] = json.loads(nations_file.read_bytes())
+NATIONS_FILE = Path("nations.json")
+NATIONS: dict[str, str] = json.loads(NATIONS_FILE.read_bytes())
 
 
 class NationCache:
@@ -176,13 +176,13 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
         nation = next(
             (
                 nation
-                for nation, emoji in nations.items()
+                for nation, emoji in NATIONS.items()
                 if payload.emoji == discord.PartialEmoji(name=emoji)
             ),
             None,
         )
         if nation is not None:
-            emoji = discord.PartialEmoji(name=nations[nation])
+            emoji = discord.PartialEmoji(name=NATIONS[nation])
             nation_picker_message = await nation_picker_message.channel.fetch_message(
                 nation_picker_message.id
             )
@@ -231,7 +231,7 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
             pass
 
     async def add_nation(self, guild: discord.Guild, nation: str):
-        emoji = discord.PartialEmoji(name=nations[nation])
+        emoji = discord.PartialEmoji(name=NATIONS[nation])
         name = f"{emoji} {nation}"
 
         role = await guild.create_role(name=name, hoist=True, mentionable=True)
@@ -287,7 +287,7 @@ def to_title(arg: str) -> str:
 
 @nation_group.command()
 async def add(ctx: commands.Context, nation: to_title) -> None:
-    if nation not in nations:
+    if nation not in NATIONS:
         await ctx.send(
             f"❌ Invalid nation **{nation}** -- please pick a valid nation from the list 😤"  # noqa: E501
         )
@@ -304,7 +304,7 @@ async def add_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     choices = [
         app_commands.Choice(name=f"{emoji} {nation}", value=nation)
-        for nation, emoji in nations.items()
+        for nation, emoji in NATIONS.items()
         if current.lower() in nation.lower()
         and nation not in bot.cache[interaction.guild].nations
     ]
