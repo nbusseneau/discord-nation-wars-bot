@@ -326,10 +326,73 @@ async def _(
     return choices[:25]
 
 
+@bot.hybrid_group()
+@commands.has_permissions(**admin_commands_required_permissions)
+@app_commands.default_permissions(**admin_commands_required_permissions)
+async def admin(ctx: commands.Context) -> None:
+    pass
+
+
+@admin.command(name="remove")
+@commands.has_permissions(**admin_commands_required_permissions)
+@app_commands.default_permissions(**admin_commands_required_permissions)
+async def admin_remove(ctx: commands.Context, nation: to_title) -> None:
+    """💀 Remove a nation (admin only)
+
+    Args:
+        nation: 💡 Find the nation by typing its name (in English, sorry!)
+    """
+    await ctx.defer(ephemeral=True)
+    nation_cache = await bot.try_get_nation(ctx.guild, nation)
+
+    if nation_cache is None or nation == GLOBAL_NATION:
+        await ctx.send(f"ℹ️ **{nation}** is not registered -- nothing to do 😴")
+        return
+
+    await bot.remove_nation(ctx.guild, nation)
+    await ctx.send(f"✅ Removed **{nation_cache.role.name}**")
+
+
+@admin_remove.autocomplete("nation")
+async def _(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    guild_cache = bot.cache[interaction.guild]
+    choices = [
+        app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation)
+        for nation, nation_cache in guild_cache.nations.items()
+        if current.lower() in nation.lower()
+    ]
+    return choices[:25]
+
+
+@admin.command(name="edit-welcome")
+@commands.has_permissions(**admin_commands_required_permissions)
+@app_commands.default_permissions(**admin_commands_required_permissions)
+async def edit_welcome(
+    ctx: commands.Context, line1: str, line2: str, line3: str
+) -> None:
+    """Edit welcome message (admin only)
+
+    Args:
+        line1: First line
+        line2: Second line
+        line3: Third line
+    """
+    await ctx.defer(ephemeral=True)
+    guild_cache = bot.cache[ctx.guild]
+    guild_cache.welcome_message = await guild_cache.welcome_message.edit(
+        content=f"{line1}\n{line2}\n{line3}"
+    )
+    await ctx.send(f"✅ Edited message {guild_cache.welcome_message.jump_url}")
+
+
 @join.error
 @leave.error
+@admin_remove.error
+@edit_welcome.error
 async def nation_error(ctx: commands.Context, error: commands.CommandError) -> None:
-    if isinstance(error, commands.MissingRole):
+    if isinstance(error, commands.MissingPermissions):
         await ctx.send("⛔ Check your privileges!")
     else:
         logger.exception(error)
