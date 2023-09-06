@@ -14,7 +14,9 @@ logger = logging.getLogger()
 
 NATIONS_FILE = Path("nations.json")
 NATIONS: dict[str, str] = json.loads(NATIONS_FILE.read_bytes())
-GLOBAL_ROLE_EMOJI = discord.PartialEmoji(name="🌐")
+GLOBAL_NATION = "Global"
+GLOBAL_NATION_EMOJI = discord.PartialEmoji(name="🌐")
+GLOBAL_ROLE_NAME = f"{GLOBAL_NATION_EMOJI} {GLOBAL_NATION}"
 
 
 class NationCache:
@@ -29,7 +31,8 @@ class NationCache:
         category: discord.CategoryChannel,
         emoji: discord.PartialEmoji,
     ) -> None:
-        self.nation_config = config.NationConfig(role.id, category.id, str(emoji))
+        if category is not None:
+            self.nation_config = config.NationConfig(role.id, category.id, str(emoji))
         self.role = role
         self.category = category
         self.emoji = emoji
@@ -45,8 +48,8 @@ class NationCache:
 class GuildCache:
     guild_config: config.GuildConfig
     global_role: discord.Role
-    bot_admin_notifications_channel: discord.TextChannel
-    nation_picker_message: discord.Message
+    admin_notifications_channel: discord.TextChannel
+    welcome_message: discord.Message
     nations: dict[str, NationCache]
 
     def __init__(
@@ -54,13 +57,13 @@ class GuildCache:
         guild: discord.Guild,
         config: config.GuildConfig,
         global_role: discord.Role,
-        bot_admin_notifications_channel: discord.TextChannel,
-        nation_picker_message: discord.Message,
+        admin_notifications_channel: discord.TextChannel,
+        welcome_message: discord.Message,
     ) -> None:
         self.guild_config = config
         self.global_role = global_role
-        self.bot_admin_notifications_channel = bot_admin_notifications_channel
-        self.nation_picker_message = nation_picker_message
+        self.admin_notifications_channel = admin_notifications_channel
+        self.welcome_message = welcome_message
         self.nations = {}
         for nation, nation_config in config.nations.items():
             self.nations[nation] = NationCache.from_config(guild, nation_config)
@@ -101,173 +104,88 @@ class CustomBot(commands.Bot):
     async def on_ready(self) -> None:
         for guild_id, guild_config in self.bot_config.guilds.items():
             guild = discord.utils.get(self.guilds, id=guild_id)
-            bot_admin_notifications_channel = guild.get_channel(
-                guild_config.bot_admin_notifications_channel_id
+            admin_notifications_channel = guild.get_channel(
+                guild_config.admin_notifications_channel_id
             )
-            nation_picker_channel = guild.get_channel(
-                guild_config.nation_picker_channel_id
+            welcome_channel = guild.get_channel(
+                guild_config.welcome_channel_id
             )
-            nation_picker_message = await nation_picker_channel.fetch_message(
-                guild_config.nation_picker_message_id
+            welcome_message = await welcome_channel.fetch_message(
+                guild_config.welcome_message_id
             )
             global_role = guild.get_role(guild_config.global_role_id)
             self.cache[guild] = GuildCache(
                 guild,
                 guild_config,
                 global_role,
-                bot_admin_notifications_channel,
-                nation_picker_message,
+                admin_notifications_channel,
+                welcome_message,
             )
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         global_role = await guild.create_role(
-            name=f"{GLOBAL_ROLE_EMOJI} Global", hoist=False, mentionable=False
+            name=GLOBAL_ROLE_NAME,
+            hoist=False,
+            mentionable=False,
         )
-        bot_admin_notifications_channel = await guild.create_text_channel(
+        admin_notifications_channel = await guild.create_text_channel(
             name="🤖│nation-wars-bot",
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
                 guild.me: discord.PermissionOverwrite(view_channel=True),
             },
         )
-        nation_picker_channel = await guild.create_text_channel(
+        welcome_channel = await guild.create_text_channel(
             name="🚩│choose-country",
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(send_messages=False),
                 guild.me: discord.PermissionOverwrite(send_messages=True),
             },
         )
-        msg = f"""- Pick your nation by **clicking on an existing flag** or **adding a new one**! 🚀
-- Any nation with **at least 4 members** will automatically get a **nation role** and **nation channels**! 😉
-- The **special {GLOBAL_ROLE_EMOJI} emoji** can be used to get access to **all nations' channels** without taking any nation's role."""  # noqa: E501"
-        nation_picker_message = await nation_picker_channel.send(msg)
-        await nation_picker_message.add_reaction(GLOBAL_ROLE_EMOJI)
+        msg = f"""## Hello, I'm the Nation Wars bot! 🤖
+- **Join your nation** by typing **`/nation join`**: I will give you **your nation's role** and access to **your nation's channels** 🚀
+- Optionally, join the special **{GLOBAL_ROLE_NAME}** nation to get access to **all nations' channels** without grabbing the roles."""  # noqa: E501"
+        welcome_message = await welcome_channel.send(msg)
         guild_config = config.GuildConfig(
             global_role.id,
-            bot_admin_notifications_channel.id,
-            nation_picker_channel.id,
-            nation_picker_message.id,
+            admin_notifications_channel.id,
+            welcome_channel.id,
+            welcome_message.id,
             {},
         )
         self.cache[guild] = GuildCache(
             guild,
             guild_config,
             global_role,
-            bot_admin_notifications_channel,
-            nation_picker_message,
+            admin_notifications_channel,
+            welcome_message,
         )
         self.save_config()
 
-    async def on_raw_reaction_add(
-        self, payload: discord.RawReactionActionEvent
-    ) -> None:
-        if payload.user_id == self.user.id:
-            return
+    async def try_get_nation(
+        self, guild: discord.Guild, nation: str, create_if_not_exists=False
+    ) -> NationCache:
+        guild_cache = self.cache[guild]
 
-        guild = discord.utils.get(self.guilds, id=payload.guild_id)
-        if guild is None or guild not in self.cache:
-            return
-
-        nation_picker_message = self.cache[guild].nation_picker_message
-        if payload.message_id != nation_picker_message.id:
-            return
-
-        # special handling for global role
-        if payload.emoji == GLOBAL_ROLE_EMOJI:
-            try:
-                await payload.member.add_roles(self.cache[guild].global_role)
-            except discord.HTTPException:
-                pass
-            return
-
-        role = next(
-            (
-                nation.role
-                for nation in self.cache[guild].nations.values()
-                if payload.emoji == nation.emoji
-            ),
-            None,
-        )
-        # when nation is already registered
-        if role is not None:
-            try:
-                await payload.member.add_roles(role)
-            except discord.HTTPException:
-                pass
-            return
-
-        # when nation is not registered
-        nation = next(
-            (
-                nation
-                for nation, emoji in NATIONS.items()
-                if payload.emoji == discord.PartialEmoji(name=emoji)
-            ),
-            None,
-        )
-        if nation is not None:
-            emoji = discord.PartialEmoji(name=NATIONS[nation])
-            nation_picker_message = await nation_picker_message.channel.fetch_message(
-                nation_picker_message.id
-            )
-            self.cache[guild].nation_picker_message = nation_picker_message
-            reaction = discord.utils.get(
-                nation_picker_message.reactions, emoji=str(emoji)
-            )
-            # as soon as 4 members have reacted
-            if reaction and reaction.count >= 4:
-                name = await self.add_nation(guild, nation)
-                await self.cache[guild].bot_admin_notifications_channel.send(
-                    f"ℹ️ Automatically added (4+ reactions): **{name}**"
-                )
-
-    async def on_raw_reaction_remove(
-        self, payload: discord.RawReactionActionEvent
-    ) -> None:
-        if payload.user_id == self.user.id:
-            return
-
-        guild = discord.utils.get(self.guilds, id=payload.guild_id)
-        if guild is None or guild not in self.cache:
-            return
-
-        if payload.message_id != self.cache[guild].nation_picker_message.id:
-            return
-
-        # special handling for global role
-        if payload.emoji == GLOBAL_ROLE_EMOJI:
-            member = guild.get_member(payload.user_id)
-            if member is None:
-                return
-            try:
-                await member.remove_roles(self.cache[guild].global_role)
-            except discord.HTTPException:
-                pass
-            return
-
-        role = next(
-            (
-                nation.role
-                for nation in self.cache[guild].nations.values()
-                if payload.emoji == nation.emoji
-            ),
-            None,
-        )
-        if role is None:
-            return
-
-        member = guild.get_member(payload.user_id)
-        if member is None:
-            return
+        # special handling for "Global" nation
+        if nation == GLOBAL_NATION:
+            return NationCache(guild_cache.global_role, None, GLOBAL_NATION_EMOJI)
 
         try:
-            await member.remove_roles(role)
-        except discord.HTTPException:
-            pass
+            return guild_cache.nations[nation]
+        except KeyError:
+            if create_if_not_exists:
+                return await self._add_nation(guild, nation)
+            else:
+                return None
 
-    async def add_nation(self, guild: discord.Guild, nation: str):
-        cache = bot.cache[guild]
-        emoji = discord.PartialEmoji(name=NATIONS[nation])
+    async def _add_nation(self, guild: discord.Guild, nation: str) -> NationCache:
+        try:
+            emoji = discord.PartialEmoji(name=NATIONS[nation])
+        except KeyError:
+            return None
+
+        guild_cache = self.cache[guild]
         name = f"{emoji} {nation}"
 
         role = await guild.create_role(name=name, hoist=True, mentionable=True)
@@ -277,26 +195,32 @@ class CustomBot(commands.Bot):
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
                 guild.me: discord.PermissionOverwrite(view_channel=True),
                 role: discord.PermissionOverwrite(view_channel=True),
-                cache.global_role: discord.PermissionOverwrite(view_channel=True),
+                guild_cache.global_role: discord.PermissionOverwrite(view_channel=True),
             },
         )
         await guild.create_text_channel(name=f"{emoji}│{nation}", category=category)
         await guild.create_voice_channel(name="players", category=category)
         await guild.create_voice_channel(name="spectators", category=category)
 
-        nation_picker_message = await cache.nation_picker_message.channel.fetch_message(
-            cache.nation_picker_message.id
-        )
-        reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
-        if reaction:
-            async for user in reaction.users():
-                await user.add_roles(role)
-        await nation_picker_message.add_reaction(emoji)
-        cache.nation_picker_message = nation_picker_message
-
-        cache.add_nation(nation, role, category, emoji)
+        guild_cache.add_nation(nation, role, category, emoji)
         self.save_config()
-        return name
+        await guild_cache.admin_notifications_channel.send(f"ℹ️ Added **{name}**")
+        return guild_cache.nations[nation]
+
+    async def remove_nation(self, guild: discord.Guild, nation: str) -> None:
+        guild_cache = self.cache[guild]
+        nation_cache = guild_cache.nations[nation]
+
+        await nation_cache.role.delete()
+        for channel in nation_cache.category.channels:
+            await channel.delete()
+        await nation_cache.category.delete()
+
+        guild_cache.remove_nation(nation)
+        self.save_config()
+        await guild_cache.admin_notifications_channel.send(
+            f"ℹ️ Removed **{nation_cache.role.name}**"
+        )
 
 
 intents = discord.Intents.default()
@@ -311,8 +235,6 @@ admin_commands_required_permissions = {
 
 @bot.hybrid_group(name="nation")
 @commands.guild_only()
-@commands.has_permissions(**admin_commands_required_permissions)
-@app_commands.default_permissions(**admin_commands_required_permissions)
 async def nation_group(ctx: commands.Context) -> None:
     pass
 
@@ -322,81 +244,149 @@ def to_title(arg: str) -> str:
 
 
 @nation_group.command()
-async def add(ctx: commands.Context, nation: to_title) -> None:
-    if nation not in NATIONS:
+async def join(ctx: commands.Context, nation: to_title) -> None:
+    """🎉 Join a nation
+
+    Args:
+        nation: 💡 Start typing to filter the list
+    """
+    await ctx.defer(ephemeral=True)
+    nation_cache = await bot.try_get_nation(
+        ctx.guild, nation, create_if_not_exists=True
+    )
+
+    if nation_cache is None or nation_cache.role in ctx.author.roles:
         await ctx.send(
-            f"❌ Invalid nation **{nation}** -- please pick a valid nation from the list 😤"  # noqa: E501
+            f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤",  # noqa: E501
         )
         return
 
-    await ctx.defer()
-    name = await bot.add_nation(ctx.guild, nation)
-    await ctx.send(f"✅ Added: **{name}**")
+    await ctx.author.add_roles(nation_cache.role)
+    await ctx.send(f"✅ Joined **{nation_cache.role.name}**")
 
 
-@add.autocomplete("nation")
-async def add_autocomplete(
+@join.autocomplete("nation")
+async def _(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
+    guild_cache = bot.cache[interaction.guild]
     choices = [
         app_commands.Choice(name=f"{emoji} {nation}", value=nation)
         for nation, emoji in NATIONS.items()
-        if current.lower() in nation.lower()
-        and nation not in bot.cache[interaction.guild].nations
+        if not (
+            nation in guild_cache.nations
+            and guild_cache.nations[nation].role in interaction.user.roles
+        )
     ]
+    # special handling for "Global" nation
+    if guild_cache.global_role not in interaction.user.roles:
+        choices.insert(
+            0, app_commands.Choice(name=GLOBAL_ROLE_NAME, value=GLOBAL_NATION)
+        )
+    choices = [choice for choice in choices if current.lower() in choice.name.lower()]
     return choices[:25]
 
 
 @nation_group.command()
-async def remove(ctx: commands.Context, nation: to_title) -> None:
-    cache = bot.cache[ctx.guild]
-    if nation not in cache.nations:
+async def leave(ctx: commands.Context, nation: to_title) -> None:
+    """👋 Leave a nation
+
+    Args:
+        nation: 💡 Start typing to filter the list
+    """
+    await ctx.defer(ephemeral=True)
+    nation_cache = await bot.try_get_nation(ctx.guild, nation)
+
+    if nation_cache is None or nation_cache.role not in ctx.author.roles:
+        await ctx.send(
+            f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤",  # noqa: E501
+        )
+        return
+
+    await ctx.author.remove_roles(nation_cache.role)
+    await ctx.send(f"✅ Removed from **{nation_cache.role.name}**")
+
+
+@leave.autocomplete("nation")
+async def _(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    guild_cache = bot.cache[interaction.guild]
+    choices = [
+        app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation)
+        for nation, nation_cache in guild_cache.nations.items()
+        if nation_cache.role in interaction.user.roles
+    ]
+    # special handling for "Global" nation
+    if guild_cache.global_role in interaction.user.roles:
+        choices.insert(
+            0, app_commands.Choice(name=GLOBAL_ROLE_NAME, value=GLOBAL_NATION)
+        )
+    choices = [choice for choice in choices if current.lower() in choice.name.lower()]
+    return choices[:25]
+
+
+@nation_group.group()
+@commands.has_permissions(**admin_commands_required_permissions)
+@app_commands.default_permissions(**admin_commands_required_permissions)
+async def admin(ctx: commands.Context) -> None:
+    pass
+
+
+@admin.command(name="remove")
+async def admin_remove(ctx: commands.Context, nation: to_title) -> None:
+    """💀 Remove a nation (admin only)
+
+    Args:
+        nation: 💡 Start typing to filter the list
+    """
+    await ctx.defer(ephemeral=True)
+    nation_cache = await bot.try_get_nation(ctx.guild, nation)
+
+    if nation_cache is None or nation == GLOBAL_NATION:
         await ctx.send(f"ℹ️ **{nation}** is not registered -- nothing to do 😴")
         return
 
-    await ctx.defer()
-
-    nation_cache = cache.nations[nation]
-    await nation_cache.role.delete()
-
-    category = nation_cache.category
-    for channel in category.channels:
-        await channel.delete()
-    await category.delete()
-
-    emoji = nation_cache.emoji
-    await cache.nation_picker_message.remove_reaction(emoji, bot.user)
-
-    cache.remove_nation(nation)
-    bot.save_config()
-    await ctx.send(f"✅ Removed: **{emoji} {nation}**")
+    await bot.remove_nation(ctx.guild, nation)
+    await ctx.send(f"✅ Removed **{nation_cache.role.name}**")
 
 
-@remove.autocomplete("nation")
-async def remove_autocomplete(
+@admin_remove.autocomplete("nation")
+async def _(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
-    return [
+    guild_cache = bot.cache[interaction.guild]
+    choices = [
         app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation)
-        for nation, nation_cache in bot.cache[interaction.guild].nations.items()
+        for nation, nation_cache in guild_cache.nations.items()
         if current.lower() in nation.lower()
     ]
+    return choices[:25]
 
 
-@nation_group.command(name="edit-picker-message")
-async def edit_picker_message(
+@admin.command(name="edit-welcome")
+async def edit_welcome(
     ctx: commands.Context, line1: str, line2: str, line3: str
 ) -> None:
-    cache = bot.cache[ctx.guild]
-    cache.nation_picker_message = await cache.nation_picker_message.edit(
+    """Edit welcome message (admin only)
+
+    Args:
+        line1: First line
+        line2: Second line
+        line3: Third line
+    """
+    await ctx.defer(ephemeral=True)
+    guild_cache = bot.cache[ctx.guild]
+    guild_cache.welcome_message = await guild_cache.welcome_message.edit(
         content=f"{line1}\n{line2}\n{line3}"
     )
-    await ctx.send(f"✅ Edited picker message: {cache.nation_picker_message.jump_url}")
+    await ctx.send(f"✅ Edited message {guild_cache.welcome_message.jump_url}")
 
 
-@add.error
-@remove.error
-@edit_picker_message.error
+@join.error
+@leave.error
+@admin_remove.error
+@edit_welcome.error
 async def nation_error(ctx: commands.Context, error: commands.CommandError) -> None:
     if isinstance(error, commands.MissingRole):
         await ctx.send("⛔ Check your privileges!")
