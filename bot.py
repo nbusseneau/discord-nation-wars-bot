@@ -160,7 +160,7 @@ def to_title(arg: str) -> str:
 @nation.command()
 async def add(ctx: commands.Context, nation: to_title) -> None:
     if not nation in nations:
-        await ctx.send(f"❌ invalid nation '{nation}' -- pick a valid nation from the list")
+        await ctx.send(f"❌ Invalid nation **{nation}** -- please pick a valid nation from the list 😤")
         return
 
     await ctx.defer()
@@ -189,7 +189,7 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
 
     guild_cache.add_nation(nation, role, category, emoji)
     bot.save_config()
-    await ctx.send(f"✅ added: {nation} {str(emoji)}")
+    await ctx.send(f"✅ Added: **{nation} {str(emoji)}**")
 
 
 @add.autocomplete('nation')
@@ -202,7 +202,7 @@ async def add_autocomplete(interaction: discord.Interaction, current: str) -> li
 async def remove(ctx: commands.Context, nation: to_title) -> None:
     guild_cache = bot.guild_cache[ctx.guild]
     if not nation in guild_cache.registered_nations:
-        await ctx.send(f"ℹ️ '{nation}' is not registered -- nothing to do")
+        await ctx.send(f"ℹ️ **{nation}** is not registered -- nothing to do 😴")
         return
 
     await ctx.defer()
@@ -220,7 +220,7 @@ async def remove(ctx: commands.Context, nation: to_title) -> None:
 
     guild_cache.remove_nation(nation)
     bot.save_config()
-    await ctx.send(f"✅ removed: {nation} {str(emoji)}")
+    await ctx.send(f"✅ Removed: **{nation} {str(emoji)}**")
 
 
 @remove.autocomplete('nation')
