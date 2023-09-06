@@ -343,6 +343,7 @@ async def remove_autocomplete(
     return [
         app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation)
         for nation, nation_cache in bot.cache[interaction.guild].nations.items()
+        if current.lower() in nation.lower()
     ]
 
 
