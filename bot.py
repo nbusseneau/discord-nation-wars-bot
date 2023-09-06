@@ -169,20 +169,22 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
 
     await ctx.defer()
 
-    role = await ctx.guild.create_role(name=nation, hoist=True, mentionable=True)
+    emoji = discord.PartialEmoji(name=nations[nation])
+    name = f"{emoji} {nation}"
+
+    role = await ctx.guild.create_role(name=name, hoist=True, mentionable=True)
 
     overwrites = {
         ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
         ctx.guild.me: discord.PermissionOverwrite(view_channel=True),
         role: discord.PermissionOverwrite(view_channel=True)
     }
-    category = await ctx.guild.create_category(name=nation, overwrites=overwrites)
-    await ctx.guild.create_text_channel(name=nation, category=category)
+    category = await ctx.guild.create_category(name=name, overwrites=overwrites)
+    await ctx.guild.create_text_channel(name=f"{emoji}│{nation}", category=category)
     await ctx.guild.create_voice_channel(name="players", category=category)
     await ctx.guild.create_voice_channel(name="spectators", category=category)
 
     guild_cache = bot.guild_cache[ctx.guild]
-    emoji = discord.PartialEmoji(name=nations[nation])
     nation_picker_message = await guild_cache.nation_picker_message.channel.fetch_message(guild_cache.nation_picker_message.id)
     reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
     if reaction:
@@ -193,12 +195,12 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
 
     guild_cache.add_nation(nation, role, category, emoji)
     bot.save_config()
-    await ctx.send(f"✅ Added: **{nation} {str(emoji)}**")
+    await ctx.send(f"✅ Added: **{name}**")
 
 
 @add.autocomplete('nation')
 async def add_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    choices = [app_commands.Choice(name=f"{nation} {emoji}", value=nation) for nation, emoji in nations.items() if current.lower() in nation.lower() and not nation in bot.guild_cache[interaction.guild].registered_nations]
+    choices = [app_commands.Choice(name=f"{emoji} {nation}", value=nation) for nation, emoji in nations.items() if current.lower() in nation.lower() and not nation in bot.guild_cache[interaction.guild].registered_nations]
     return choices[:25]
 
 
@@ -224,12 +226,12 @@ async def remove(ctx: commands.Context, nation: to_title) -> None:
 
     guild_cache.remove_nation(nation)
     bot.save_config()
-    await ctx.send(f"✅ Removed: **{nation} {str(emoji)}**")
+    await ctx.send(f"✅ Removed: **{emoji} {nation}**")
 
 
 @remove.autocomplete('nation')
 async def remove_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    return [app_commands.Choice(name=f"{nation} {nation_cache.emoji}", value=nation) for nation, nation_cache in bot.guild_cache[interaction.guild].registered_nations.items()]
+    return [app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation) for nation, nation_cache in bot.guild_cache[interaction.guild].registered_nations.items()]
 
 
 @add.error
