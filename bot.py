@@ -14,6 +14,7 @@ logger = logging.getLogger()
 
 NATIONS_FILE = Path("nations.json")
 NATIONS: dict[str, str] = json.loads(NATIONS_FILE.read_bytes())
+GLOBAL_ROLE_EMOJI = discord.PartialEmoji(name="🌐")
 
 
 class NationCache:
@@ -43,6 +44,7 @@ class NationCache:
 
 class GuildCache:
     guild_config: config.GuildConfig
+    global_role: discord.Role
     bot_admin_notifications_channel: discord.TextChannel
     nation_picker_message: discord.Message
     nations: dict[str, NationCache]
@@ -51,10 +53,12 @@ class GuildCache:
         self,
         guild: discord.Guild,
         config: config.GuildConfig,
+        global_role: discord.Role,
         bot_admin_notifications_channel: discord.TextChannel,
         nation_picker_message: discord.Message,
     ) -> None:
         self.guild_config = config
+        self.global_role = global_role
         self.bot_admin_notifications_channel = bot_admin_notifications_channel
         self.nation_picker_message = nation_picker_message
         self.nations = {}
@@ -106,14 +110,19 @@ class CustomBot(commands.Bot):
             nation_picker_message = await nation_picker_channel.fetch_message(
                 guild_config.nation_picker_message_id
             )
+            global_role = guild.get_role(guild_config.global_role_id)
             self.cache[guild] = GuildCache(
                 guild,
                 guild_config,
+                global_role,
                 bot_admin_notifications_channel,
                 nation_picker_message,
             )
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
+        global_role = await guild.create_role(
+            name=f"{GLOBAL_ROLE_EMOJI} Global", hoist=False, mentionable=False
+        )
         bot_admin_notifications_channel = await guild.create_text_channel(
             name="🤖│nation-wars-bot",
             overwrites={
@@ -128,17 +137,24 @@ class CustomBot(commands.Bot):
                 guild.me: discord.PermissionOverwrite(send_messages=True),
             },
         )
-        msg = """Set your nation by **clicking on an existing flag** or **adding a new one**! 🚀
-Any nation with **at least 4 members** will automatically get a **nation role** and **nation channels**! 😉"""  # noqa: E501"
+        msg = f"""- Pick your nation by **clicking on an existing flag** or **adding a new one**! 🚀
+- Any nation with **at least 4 members** will automatically get a **nation role** and **nation channels**! 😉
+- The **special {GLOBAL_ROLE_EMOJI} emoji** can be used to get access to **all nations' channels** without taking any nation's role."""  # noqa: E501"
         nation_picker_message = await nation_picker_channel.send(msg)
+        await nation_picker_message.add_reaction(GLOBAL_ROLE_EMOJI)
         guild_config = config.GuildConfig(
+            global_role.id,
             bot_admin_notifications_channel.id,
             nation_picker_channel.id,
             nation_picker_message.id,
             {},
         )
         self.cache[guild] = GuildCache(
-            guild, guild_config, bot_admin_notifications_channel, nation_picker_message
+            guild,
+            guild_config,
+            global_role,
+            bot_admin_notifications_channel,
+            nation_picker_message,
         )
         self.save_config()
 
@@ -154,6 +170,14 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
 
         nation_picker_message = self.cache[guild].nation_picker_message
         if payload.message_id != nation_picker_message.id:
+            return
+
+        # special handling for global role
+        if payload.emoji == GLOBAL_ROLE_EMOJI:
+            try:
+                await payload.member.add_roles(self.cache[guild].global_role)
+            except discord.HTTPException:
+                pass
             return
 
         role = next(
@@ -210,6 +234,17 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
         if payload.message_id != self.cache[guild].nation_picker_message.id:
             return
 
+        # special handling for global role
+        if payload.emoji == GLOBAL_ROLE_EMOJI:
+            member = guild.get_member(payload.user_id)
+            if member is None:
+                return
+            try:
+                await member.remove_roles(self.cache[guild].global_role)
+            except discord.HTTPException:
+                pass
+            return
+
         role = next(
             (
                 nation.role
@@ -231,6 +266,7 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
             pass
 
     async def add_nation(self, guild: discord.Guild, nation: str):
+        cache = bot.cache[guild]
         emoji = discord.PartialEmoji(name=NATIONS[nation])
         name = f"{emoji} {nation}"
 
@@ -241,13 +277,13 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
                 guild.me: discord.PermissionOverwrite(view_channel=True),
                 role: discord.PermissionOverwrite(view_channel=True),
+                cache.global_role: discord.PermissionOverwrite(view_channel=True),
             },
         )
         await guild.create_text_channel(name=f"{emoji}│{nation}", category=category)
         await guild.create_voice_channel(name="players", category=category)
         await guild.create_voice_channel(name="spectators", category=category)
 
-        cache = bot.cache[guild]
         nation_picker_message = await cache.nation_picker_message.channel.fetch_message(
             cache.nation_picker_message.id
         )
@@ -348,10 +384,12 @@ async def remove_autocomplete(
 
 
 @nation_group.command(name="edit-picker-message")
-async def edit_picker_message(ctx: commands.Context, message: str) -> None:
+async def edit_picker_message(
+    ctx: commands.Context, line1: str, line2: str, line3: str
+) -> None:
     cache = bot.cache[ctx.guild]
     cache.nation_picker_message = await cache.nation_picker_message.edit(
-        content=message
+        content=f"{line1}\n{line2}\n{line3}"
     )
     await ctx.send(f"✅ Edited picker message: {cache.nation_picker_message.jump_url}")
 
