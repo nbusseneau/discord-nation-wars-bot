@@ -8,4 +8,3 @@
 - Text
   - Send Messages
   - Read Message History
-  - Add Reactions
