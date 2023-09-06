@@ -143,12 +143,16 @@ intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
 bot = CustomBot(command_prefix='$', intents=intents)
+admin_commands_required_permissions = {
+    "manage_channels": True,
+    "manage_roles": True,
+}
 
 
 @bot.hybrid_group()
 @commands.guild_only()
-@commands.has_permissions(manage_channels=True, manage_roles=True, manage_messages=True)
-@app_commands.default_permissions(manage_channels=True, manage_roles=True, manage_messages=True)
+@commands.has_permissions(**admin_commands_required_permissions)
+@app_commands.default_permissions(**admin_commands_required_permissions)
 async def nation(ctx) -> None:
     pass
 
