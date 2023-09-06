@@ -13,7 +13,7 @@ class NationConfig(dataclasses_json.DataClassJsonMixin):
 class GuildConfig(dataclasses_json.DataClassJsonMixin):
     nation_picker_channel_id: int
     nation_picker_message_id: int
-    registered_nations: dict[str, NationConfig]
+    nations: dict[str, NationConfig]
 
 
 @dataclasses.dataclass
