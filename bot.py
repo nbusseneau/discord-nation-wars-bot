@@ -192,11 +192,11 @@ admin_commands_required_permissions = {
 }
 
 
-@bot.hybrid_group()
+@bot.hybrid_group(name="nation")
 @commands.guild_only()
 @commands.has_permissions(**admin_commands_required_permissions)
 @app_commands.default_permissions(**admin_commands_required_permissions)
-async def nation(ctx) -> None:
+async def nation_group(ctx: commands.Context) -> None:
     pass
 
 
@@ -204,7 +204,7 @@ def to_title(arg: str) -> str:
     return arg.title()
 
 
-@nation.command()
+@nation_group.command()
 async def add(ctx: commands.Context, nation: to_title) -> None:
     if nation not in nations:
         await ctx.send(
@@ -258,7 +258,7 @@ async def add_autocomplete(
     return choices[:25]
 
 
-@nation.command()
+@nation_group.command()
 async def remove(ctx: commands.Context, nation: to_title) -> None:
     cache = bot.cache[ctx.guild]
     if nation not in cache.nations:
@@ -293,7 +293,7 @@ async def remove_autocomplete(
     ]
 
 
-@nation.command(name="edit-picker-message")
+@nation_group.command(name="edit-picker-message")
 async def edit_picker_message(ctx: commands.Context, message: str) -> None:
     cache = bot.cache[ctx.guild]
     cache.nation_picker_message = await cache.nation_picker_message.edit(
