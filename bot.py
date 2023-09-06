@@ -136,7 +136,7 @@ class CustomBot(commands.Bot):
             },
         )
         welcome_channel = await guild.create_text_channel(
-            name="🚩│choose-country",
+            name="🚩│join-nation",
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(send_messages=False),
                 guild.me: discord.PermissionOverwrite(send_messages=True),
