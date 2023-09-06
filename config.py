@@ -11,6 +11,7 @@ class NationConfig(dataclasses_json.DataClassJsonMixin):
 
 @dataclasses.dataclass
 class GuildConfig(dataclasses_json.DataClassJsonMixin):
+    bot_admin_notifications_channel_id: int
     nation_picker_channel_id: int
     nation_picker_message_id: int
     nations: dict[str, NationConfig]

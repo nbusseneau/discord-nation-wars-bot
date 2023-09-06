@@ -43,6 +43,7 @@ class NationCache:
 
 class GuildCache:
     guild_config: config.GuildConfig
+    bot_admin_notifications_channel: discord.TextChannel
     nation_picker_message: discord.Message
     nations: dict[str, NationCache]
 
@@ -50,9 +51,11 @@ class GuildCache:
         self,
         guild: discord.Guild,
         config: config.GuildConfig,
+        bot_admin_notifications_channel: discord.TextChannel,
         nation_picker_message: discord.Message,
     ) -> None:
         self.guild_config = config
+        self.bot_admin_notifications_channel = bot_admin_notifications_channel
         self.nation_picker_message = nation_picker_message
         self.nations = {}
         for nation, nation_config in config.nations.items():
@@ -94,29 +97,49 @@ class CustomBot(commands.Bot):
     async def on_ready(self) -> None:
         for guild_id, guild_config in self.bot_config.guilds.items():
             guild = discord.utils.get(self.guilds, id=guild_id)
+            bot_admin_notifications_channel = guild.get_channel(
+                guild_config.bot_admin_notifications_channel_id
+            )
             nation_picker_channel = guild.get_channel(
                 guild_config.nation_picker_channel_id
             )
             nation_picker_message = await nation_picker_channel.fetch_message(
                 guild_config.nation_picker_message_id
             )
-            self.cache[guild] = GuildCache(guild, guild_config, nation_picker_message)
+            self.cache[guild] = GuildCache(
+                guild,
+                guild_config,
+                bot_admin_notifications_channel,
+                nation_picker_message,
+            )
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(send_messages=False),
-            guild.me: discord.PermissionOverwrite(send_messages=True),
-        }
+        bot_admin_notifications_channel = await guild.create_text_channel(
+            name="🤖│nation-wars-bot",
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                guild.me: discord.PermissionOverwrite(view_channel=True),
+            },
+        )
         nation_picker_channel = await guild.create_text_channel(
-            name="🚩│choose-country", overwrites=overwrites
+            name="🚩│choose-country",
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(send_messages=False),
+                guild.me: discord.PermissionOverwrite(send_messages=True),
+            },
         )
         msg = """Set your nation by **clicking on an existing flag** or **adding a new one**! 🚀
 Any nation with **at least 4 members** will automatically get a **nation role** and **nation channels**! 😉"""  # noqa: E501"
         nation_picker_message = await nation_picker_channel.send(msg)
         guild_config = config.GuildConfig(
-            nation_picker_channel.id, nation_picker_message.id, {}
+            bot_admin_notifications_channel.id,
+            nation_picker_channel.id,
+            nation_picker_message.id,
+            {},
         )
-        self.cache[guild] = GuildCache(guild, guild_config, nation_picker_message)
+        self.cache[guild] = GuildCache(
+            guild, guild_config, bot_admin_notifications_channel, nation_picker_message
+        )
         self.save_config()
 
     async def on_raw_reaction_add(
@@ -129,7 +152,8 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
         if guild is None or guild not in self.cache:
             return
 
-        if payload.message_id != self.cache[guild].nation_picker_message.id:
+        nation_picker_message = self.cache[guild].nation_picker_message
+        if payload.message_id != nation_picker_message.id:
             return
 
         role = next(
@@ -140,13 +164,38 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
             ),
             None,
         )
-        if role is None:
+        # when nation is already registered
+        if role is not None:
+            try:
+                await payload.member.add_roles(role)
+            except discord.HTTPException:
+                pass
             return
 
-        try:
-            await payload.member.add_roles(role)
-        except discord.HTTPException:
-            pass
+        # when nation is not registered
+        nation = next(
+            (
+                nation
+                for nation, emoji in nations.items()
+                if payload.emoji == discord.PartialEmoji(name=emoji)
+            ),
+            None,
+        )
+        if nation is not None:
+            emoji = discord.PartialEmoji(name=nations[nation])
+            nation_picker_message = await nation_picker_message.channel.fetch_message(
+                nation_picker_message.id
+            )
+            self.cache[guild].nation_picker_message = nation_picker_message
+            reaction = discord.utils.get(
+                nation_picker_message.reactions, emoji=str(emoji)
+            )
+            # as soon as 4 members have reacted
+            if reaction and reaction.count >= 4:
+                name = await self.add_nation(guild, nation)
+                await self.cache[guild].bot_admin_notifications_channel.send(
+                    f"ℹ️ Automatically added (4+ reactions): **{name}**"
+                )
 
     async def on_raw_reaction_remove(
         self, payload: discord.RawReactionActionEvent
@@ -181,6 +230,38 @@ Any nation with **at least 4 members** will automatically get a **nation role** 
         except discord.HTTPException:
             pass
 
+    async def add_nation(self, guild: discord.Guild, nation: str):
+        emoji = discord.PartialEmoji(name=nations[nation])
+        name = f"{emoji} {nation}"
+
+        role = await guild.create_role(name=name, hoist=True, mentionable=True)
+        category = await guild.create_category(
+            name=name,
+            overwrites={
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                guild.me: discord.PermissionOverwrite(view_channel=True),
+                role: discord.PermissionOverwrite(view_channel=True),
+            },
+        )
+        await guild.create_text_channel(name=f"{emoji}│{nation}", category=category)
+        await guild.create_voice_channel(name="players", category=category)
+        await guild.create_voice_channel(name="spectators", category=category)
+
+        cache = bot.cache[guild]
+        nation_picker_message = await cache.nation_picker_message.channel.fetch_message(
+            cache.nation_picker_message.id
+        )
+        reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
+        if reaction:
+            async for user in reaction.users():
+                await user.add_roles(role)
+        await nation_picker_message.add_reaction(emoji)
+        cache.nation_picker_message = nation_picker_message
+
+        cache.add_nation(nation, role, category, emoji)
+        self.save_config()
+        return name
+
 
 intents = discord.Intents.default()
 intents.members = True
@@ -213,35 +294,7 @@ async def add(ctx: commands.Context, nation: to_title) -> None:
         return
 
     await ctx.defer()
-
-    emoji = discord.PartialEmoji(name=nations[nation])
-    name = f"{emoji} {nation}"
-
-    role = await ctx.guild.create_role(name=name, hoist=True, mentionable=True)
-
-    overwrites = {
-        ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        ctx.guild.me: discord.PermissionOverwrite(view_channel=True),
-        role: discord.PermissionOverwrite(view_channel=True),
-    }
-    category = await ctx.guild.create_category(name=name, overwrites=overwrites)
-    await ctx.guild.create_text_channel(name=f"{emoji}│{nation}", category=category)
-    await ctx.guild.create_voice_channel(name="players", category=category)
-    await ctx.guild.create_voice_channel(name="spectators", category=category)
-
-    cache = bot.cache[ctx.guild]
-    nation_picker_message = await cache.nation_picker_message.channel.fetch_message(
-        cache.nation_picker_message.id
-    )
-    reaction = discord.utils.get(nation_picker_message.reactions, emoji=str(emoji))
-    if reaction:
-        async for user in reaction.users():
-            await user.add_roles(role)
-    await nation_picker_message.add_reaction(emoji)
-    cache.nation_picker_message = nation_picker_message
-
-    cache.add_nation(nation, role, category, emoji)
-    bot.save_config()
+    name = await bot.add_nation(ctx.guild, nation)
     await ctx.send(f"✅ Added: **{name}**")
 
 
