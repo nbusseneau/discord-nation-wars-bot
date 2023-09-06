@@ -143,7 +143,7 @@ class CustomBot(commands.Bot):
             },
         )
         msg = f"""## Hello, I'm the Nation Wars bot! 🤖
-- **Join your nation** by typing **`/nation join`**: I will give you **your nation's role** and access to **your nation's channels** 🚀
+- **Join your nation** by typing **`/nation join`** and searching for your nation's name in English. I will give you **your nation's role** and access to **your nation's channels** 🚀
 - Optionally, join the special **{GLOBAL_ROLE_NAME}** nation to get access to **all nations' channels** without grabbing the roles."""  # noqa: E501"
         welcome_message = await welcome_channel.send(msg)
         guild_config = config.GuildConfig(
@@ -248,7 +248,7 @@ async def join(ctx: commands.Context, nation: to_title) -> None:
     """🎉 Join a nation
 
     Args:
-        nation: 💡 Start typing to filter the list
+        nation: 💡 Find the nation by typing its name (in English, sorry!)
     """
     await ctx.defer(ephemeral=True)
     nation_cache = await bot.try_get_nation(
@@ -292,7 +292,7 @@ async def leave(ctx: commands.Context, nation: to_title) -> None:
     """👋 Leave a nation
 
     Args:
-        nation: 💡 Start typing to filter the list
+        nation: 💡 Find the nation by typing its name (in English, sorry!)
     """
     await ctx.defer(ephemeral=True)
     nation_cache = await bot.try_get_nation(ctx.guild, nation)
@@ -338,7 +338,7 @@ async def admin_remove(ctx: commands.Context, nation: to_title) -> None:
     """💀 Remove a nation (admin only)
 
     Args:
-        nation: 💡 Start typing to filter the list
+        nation: 💡 Find the nation by typing its name (in English, sorry!)
     """
     await ctx.defer(ephemeral=True)
     nation_cache = await bot.try_get_nation(ctx.guild, nation)
