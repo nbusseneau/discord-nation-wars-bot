@@ -110,8 +110,8 @@ class CustomBot(commands.Bot):
         nation_picker_channel = await guild.create_text_channel(
             name="🚩│choose-country", overwrites=overwrites
         )
-        msg = """Click on a flag to get a nation's role and access its private channels! 🚀
-If your nation is missing, you can still add your flag, but you will want to ping the admins to set up the role and channels 😉"""  # noqa: E501"
+        msg = """Set your nation by **clicking on an existing flag** or **adding a new one**! 🚀
+Any nation with **at least 4 members** will automatically get a **nation role** and **nation channels**! 😉"""  # noqa: E501"
         nation_picker_message = await nation_picker_channel.send(msg)
         guild_config = config.GuildConfig(
             nation_picker_channel.id, nation_picker_message.id, {}
@@ -293,8 +293,18 @@ async def remove_autocomplete(
     ]
 
 
+@nation.command(name="edit-picker-message")
+async def edit_picker_message(ctx: commands.Context, message: str) -> None:
+    cache = bot.cache[ctx.guild]
+    cache.nation_picker_message = await cache.nation_picker_message.edit(
+        content=message
+    )
+    await ctx.send(f"✅ Edited picker message: {cache.nation_picker_message.jump_url}")
+
+
 @add.error
 @remove.error
+@edit_picker_message.error
 async def nation_error(ctx: commands.Context, error: commands.CommandError) -> None:
     if isinstance(error, commands.MissingRole):
         await ctx.send("⛔ Check your privileges!")
