@@ -87,7 +87,9 @@ class CustomBot(commands.Bot):
             guild.me: discord.PermissionOverwrite(send_messages=True),
         }
         nation_picker_channel = await guild.create_text_channel(name="🚩│choose-country", overwrites=overwrites)
-        nation_picker_message = await nation_picker_channel.send("Click on a flag to choose your nation! 🚀")
+        msg = """Click on a flag to get a nation's role and access its private channels! 🚀
+If your nation is missing, you can still add your flag, but you will want to ping the admins to set up the role and channels 😉"""
+        nation_picker_message = await nation_picker_channel.send(msg)
         guild_config = config.GuildConfig(nation_picker_channel.id, nation_picker_message.id, {})
         self.guild_cache[guild] = GuildCache(guild, guild_config, nation_picker_message)
         self.save_config()
