@@ -1,14 +1,12 @@
 import json
 import logging
 from pathlib import Path
+from typing import Union
 
 import discord
 from discord import app_commands
 
-import config
-
-
-logger = logging.getLogger()
+from nation_wars_bot import config
 
 
 NATIONS_FILE = Path("nations.json")
@@ -19,11 +17,6 @@ GLOBAL_ROLE_NAME = f"{GLOBAL_NATION_EMOJI} {GLOBAL_NATION}"
 
 
 class NationCache:
-    nation_config: config.NationConfig
-    role: discord.Role
-    category: discord.CategoryChannel
-    emoji: discord.PartialEmoji
-
     def __init__(
         self,
         role: discord.Role,
@@ -37,7 +30,9 @@ class NationCache:
         self.emoji = emoji
 
     @classmethod
-    def from_config(cls, guild: discord.Guild, config: config.NationConfig) -> None:
+    def from_config(
+        cls, guild: discord.Guild, config: config.NationConfig
+    ) -> "NationCache":
         role = guild.get_role(config.role_id)
         category = guild.get_channel(config.category_id)
         emoji = discord.PartialEmoji(name=config.emoji)
@@ -45,12 +40,6 @@ class NationCache:
 
 
 class GuildCache:
-    guild_config: config.GuildConfig
-    global_role: discord.Role
-    admin_notifications_channel: discord.TextChannel
-    welcome_message: discord.Message
-    nations: dict[str, NationCache]
-
     def __init__(
         self,
         guild: discord.Guild,
@@ -63,7 +52,7 @@ class GuildCache:
         self.global_role = global_role
         self.admin_notifications_channel = admin_notifications_channel
         self.welcome_message = welcome_message
-        self.nations = {}
+        self.nations: dict[str, NationCache] = {}
         for nation, nation_config in config.nations.items():
             self.nations[nation] = NationCache.from_config(guild, nation_config)
 
@@ -83,22 +72,32 @@ class GuildCache:
 
 
 class NationWarsBot(discord.Client):
-    cache: dict[discord.Guild, GuildCache]
-
     def __init__(self, config_filepath: str = "config.json", *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.tree = app_commands.CommandTree(self)
-        self.tree.add_command(NationGroup(self))
-        self.tree.add_command(AdminGroup(self))
+        self.tree.on_error = self._tree_error_handler
         self.config_file = Path(config_filepath)
         self.bot_config = config.BotConfig.from_json(self.config_file.read_bytes())
-        self.cache = {}
+        self.cache: dict[discord.Guild, GuildCache] = {}
 
     def save_config(self) -> None:
         self.bot_config = config.BotConfig(self.bot_config.token, {})
         for guild, discord_config in self.cache.items():
             self.bot_config.guilds[guild.id] = discord_config.guild_config
         self.config_file.write_text(self.bot_config.to_json(indent=2))
+
+    def add_command(
+        self, command: Union[app_commands.Command, app_commands.Group]
+    ) -> None:
+        self.tree.add_command(command)
+
+    async def _tree_error_handler(
+        interaction: discord.Interaction, error: discord.app_commands.AppCommandError
+    ) -> None:
+        logging.exception(error)
+        await interaction.followup.send(
+            "⚠️ Something went wrong -- check the logs... 😖"
+        )
 
     async def setup_hook(self) -> None:
         await self.tree.sync()
@@ -221,181 +220,3 @@ class NationWarsBot(discord.Client):
         await guild_cache.admin_notifications_channel.send(
             f"ℹ️ Removed **{nation_cache.role.name}**"
         )
-
-
-def to_title(arg: str) -> str:
-    return arg.title()
-
-
-@app_commands.guild_only()
-class NationGroup(app_commands.Group):
-    def __init__(self, bot: NationWarsBot, *args, **kwargs):
-        super().__init__(name="nation", description="user commands", *args, **kwargs)
-        self.bot = bot
-
-    @app_commands.command()
-    async def join(self, interaction: discord.Interaction, nation: str) -> None:
-        """🎉 Join a nation
-
-        Args:
-            nation: 💡 Find the nation by typing its name (in English, sorry!)
-        """
-        nation = to_title(nation)
-        await interaction.response.defer(ephemeral=True)
-        nation_cache = await self.bot.try_get_nation(
-            interaction.guild, nation, create_if_not_exists=True
-        )
-
-        if nation_cache is None or nation_cache.role in interaction.user.roles:
-            await interaction.followup.send(
-                f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤",  # noqa: E501
-            )
-            return
-
-        await interaction.user.add_roles(nation_cache.role)
-        await interaction.followup.send(
-            content=f"✅ Joined **{nation_cache.role.name}**", ephemeral=True
-        )
-
-    @join.autocomplete("nation")
-    async def _(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[str]]:
-        guild_cache = self.bot.cache[interaction.guild]
-        choices = [
-            app_commands.Choice(name=f"{emoji} {nation}", value=nation)
-            for nation, emoji in NATIONS.items()
-            if not (
-                nation in guild_cache.nations
-                and guild_cache.nations[nation].role in interaction.user.roles
-            )
-        ]
-        # special handling for "Global" nation
-        if guild_cache.global_role not in interaction.user.roles:
-            choices.insert(
-                0, app_commands.Choice(name=GLOBAL_ROLE_NAME, value=GLOBAL_NATION)
-            )
-        choices = [
-            choice for choice in choices if current.lower() in choice.name.lower()
-        ]
-        return choices[:25]
-
-    @app_commands.command()
-    async def leave(self, interaction: discord.Interaction, nation: str) -> None:
-        """👋 Leave a nation
-
-        Args:
-            nation: 💡 Find the nation by typing its name (in English, sorry!)
-        """
-        nation = to_title(nation)
-        await interaction.response.defer(ephemeral=True)
-        nation_cache = await self.bot.try_get_nation(interaction.guild, nation)
-
-        if nation_cache is None or nation_cache.role not in interaction.user.roles:
-            await interaction.followup.send(
-                f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤",  # noqa: E501
-            )
-            return
-
-        await interaction.user.remove_roles(nation_cache.role)
-        await interaction.followup.send(f"✅ Removed from **{nation_cache.role.name}**")
-
-    @leave.autocomplete("nation")
-    async def _(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[str]]:
-        guild_cache = self.bot.cache[interaction.guild]
-        choices = [
-            app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation)
-            for nation, nation_cache in guild_cache.nations.items()
-            if nation_cache.role in interaction.user.roles
-        ]
-        # special handling for "Global" nation
-        if guild_cache.global_role in interaction.user.roles:
-            choices.insert(
-                0, app_commands.Choice(name=GLOBAL_ROLE_NAME, value=GLOBAL_NATION)
-            )
-        choices = [
-            choice for choice in choices if current.lower() in choice.name.lower()
-        ]
-        return choices[:25]
-
-
-@app_commands.guild_only()
-@app_commands.default_permissions(manage_channels=True, manage_roles=True)
-class AdminGroup(app_commands.Group):
-    def __init__(self, bot: NationWarsBot, *args, **kwargs):
-        super().__init__(
-            name="admin", description="admin-only commands", *args, **kwargs
-        )
-        self.bot = bot
-
-    @app_commands.command()
-    async def remove(self, interaction: discord.Interaction, nation: str) -> None:
-        """💀 Remove a nation (admin only)
-
-        Args:
-            nation: 💡 Find the nation by typing its name (in English, sorry!)
-        """
-        nation = to_title(nation)
-        await interaction.response.defer(ephemeral=True)
-        nation_cache = await self.bot.try_get_nation(interaction.guild, nation)
-
-        if nation_cache is None or nation == GLOBAL_NATION:
-            await interaction.followup.send(
-                f"ℹ️ **{nation}** is not registered -- nothing to do 😴"
-            )
-            return
-
-        await self.bot.remove_nation(interaction.guild, nation)
-        await interaction.followup.send(f"✅ Removed **{nation_cache.role.name}**")
-
-    @remove.autocomplete("nation")
-    async def _(
-        self, interaction: discord.Interaction, current: str
-    ) -> list[app_commands.Choice[str]]:
-        guild_cache = self.bot.cache[interaction.guild]
-        choices = [
-            app_commands.Choice(name=f"{nation_cache.emoji} {nation}", value=nation)
-            for nation, nation_cache in guild_cache.nations.items()
-            if current.lower() in nation.lower()
-        ]
-        return choices[:25]
-
-    @app_commands.command(name="edit-welcome")
-    async def edit_welcome(
-        self, interaction: discord.Interaction, line1: str, line2: str, line3: str
-    ) -> None:
-        """Edit welcome message (admin only)
-
-        Args:
-            line1: First line
-            line2: Second line
-            line3: Third line
-        """
-        await interaction.response.defer(ephemeral=True)
-        guild_cache = self.bot.cache[interaction.guild]
-        guild_cache.welcome_message = await guild_cache.welcome_message.edit(
-            content=f"{line1}\n{line2}\n{line3}"
-        )
-        await interaction.followup.send(
-            f"✅ Edited message {guild_cache.welcome_message.jump_url}"
-        )
-
-
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
-bot = NationWarsBot(intents=intents)
-
-
-@bot.tree.error
-async def _(
-    interaction: discord.Interaction, error: app_commands.AppCommandError
-) -> None:
-    logger.exception(error)
-    await interaction.followup.send("⚠️ Something went wrong -- check the logs... 😖")
-
-
-if __name__ == "__main__":
-    bot.run(token=bot.bot_config.token, log_level=logging.INFO, root_logger=True)
