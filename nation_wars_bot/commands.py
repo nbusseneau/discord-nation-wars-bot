@@ -12,17 +12,16 @@ class Command(app_commands.Command):
 
 @app_commands.guild_only()
 class JoinCommand(Command):
-    """🎉 Join a nation
-
-    Args:
-        nation: 💡 Find the nation by typing its name (in English, sorry!)
-    """
+    """🎉 Join a nation"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(
             name="join", description=self.__doc__, callback=self.join, *args, **kwargs
         )
         self.autocomplete("nation")(self.join_autocomplete)
+        self._params[
+            "nation"
+        ].description = "💡 Find the nation by typing its name (in English, sorry!)"
 
     async def join(self, interaction: discord.Interaction, nation: str) -> None:
         nation = nation.title()
@@ -70,17 +69,16 @@ class JoinCommand(Command):
 
 @app_commands.guild_only()
 class LeaveCommand(Command):
-    """👋 Leave a nation
-
-    Args:
-        nation: 💡 Find the nation by typing its name (in English, sorry!)
-    """
+    """👋 Leave a nation"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(
             name="leave", description=self.__doc__, callback=self.leave, *args, **kwargs
         )
         self.autocomplete("nation")(self.leave_autocomplete)
+        self._params[
+            "nation"
+        ].description = "💡 Find the nation by typing its name (in English, sorry!)"
 
     async def leave(self, interaction: discord.Interaction, nation: str) -> None:
         nation = nation.title()
