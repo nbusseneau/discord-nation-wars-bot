@@ -1,4 +1,6 @@
 import dataclasses
+from pathlib import Path
+
 import dataclasses_json
 
 
@@ -22,3 +24,7 @@ class GuildConfig(dataclasses_json.DataClassJsonMixin):
 class BotConfig(dataclasses_json.DataClassJsonMixin):
     token: str
     guilds: dict[int, GuildConfig]
+
+
+CONFIG_FILE = Path("config.json")
+BOT_CONFIG = BotConfig.from_json(CONFIG_FILE.read_bytes())

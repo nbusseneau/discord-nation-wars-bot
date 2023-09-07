@@ -1,19 +1,26 @@
-import json
 import logging
-from pathlib import Path
-from typing import Union
 
 import discord
 from discord import app_commands
 
-from nation_wars_bot import config
+from nation_wars_bot import config, commands, nations
 
 
-NATIONS_FILE = Path("nations.json")
-NATIONS: dict[str, str] = json.loads(NATIONS_FILE.read_bytes())
-GLOBAL_NATION = "Global"
-GLOBAL_NATION_EMOJI = discord.PartialEmoji(name="🌐")
-GLOBAL_ROLE_NAME = f"{GLOBAL_NATION_EMOJI} {GLOBAL_NATION}"
+DEFAULT_WELCOME_MESSAGE = f"""# Hello, I'm the Nation Wars bot! 🤖
+
+## Slash Commands
+
+- Use **`/join`** to **join your nation**: I will give you **your nation's role** and access to **your nation's channels** 🚀
+  - ℹ️ You can join only **one** nation at once, use **`/leave`** first to switch!
+- Use **`/global`** to enable the **{nations.GLOBAL_ROLE_NAME}** role and get access to **all nations' channels** (but not the roles!).
+  - 💡 Use  **`/global`** again to disable or re-enable the role at any time!
+
+## Step-by-step join instructions
+
+- Type **`/join`** and then **Space**.
+- Start typing your nation's name in English: **3 characters** should be enough to filter the list.
+- Select your nation from the list, and then **Enter**.
+"""  # noqa: E501"
 
 
 class NationCache:
@@ -31,11 +38,11 @@ class NationCache:
 
     @classmethod
     def from_config(
-        cls, guild: discord.Guild, config: config.NationConfig
+        cls, guild: discord.Guild, nation_config: config.NationConfig
     ) -> "NationCache":
-        role = guild.get_role(config.role_id)
-        category = guild.get_channel(config.category_id)
-        emoji = discord.PartialEmoji(name=config.emoji)
+        role = guild.get_role(nation_config.role_id)
+        category = guild.get_channel(nation_config.category_id)
+        emoji = discord.PartialEmoji(name=nation_config.emoji)
         return cls(role, category, emoji)
 
 
@@ -43,17 +50,17 @@ class GuildCache:
     def __init__(
         self,
         guild: discord.Guild,
-        config: config.GuildConfig,
+        guild_config: config.GuildConfig,
         global_role: discord.Role,
         admin_notifications_channel: discord.TextChannel,
         welcome_message: discord.Message,
     ) -> None:
-        self.guild_config = config
+        self.guild_config = guild_config
         self.global_role = global_role
         self.admin_notifications_channel = admin_notifications_channel
         self.welcome_message = welcome_message
         self.nations: dict[str, NationCache] = {}
-        for nation, nation_config in config.nations.items():
+        for nation, nation_config in guild_config.nations.items():
             self.nations[nation] = NationCache.from_config(guild, nation_config)
 
     def add_nation(
@@ -72,38 +79,37 @@ class GuildCache:
 
 
 class NationWarsBot(discord.Client):
-    def __init__(self, config_filepath: str = "config.json", *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.tree = app_commands.CommandTree(self)
+        self.tree.add_command(commands.join)
+        self.tree.add_command(commands.leave)
+        self.tree.add_command(commands.global_command)
+        self.tree.add_command(commands.admin)
         self.tree.on_error = self._tree_error_handler
-        self.config_file = Path(config_filepath)
-        self.bot_config = config.BotConfig.from_json(self.config_file.read_bytes())
         self.cache: dict[discord.Guild, GuildCache] = {}
 
-    def save_config(self) -> None:
-        self.bot_config = config.BotConfig(self.bot_config.token, {})
-        for guild, discord_config in self.cache.items():
-            self.bot_config.guilds[guild.id] = discord_config.guild_config
-        self.config_file.write_text(self.bot_config.to_json(indent=2))
-
-    def add_command(
-        self, command: Union[app_commands.Command, app_commands.Group]
-    ) -> None:
-        self.tree.add_command(command)
-
     async def _tree_error_handler(
-        interaction: discord.Interaction, error: discord.app_commands.AppCommandError
+        self,
+        interaction: discord.Interaction,
+        error: discord.app_commands.AppCommandError,
     ) -> None:
         logging.exception(error)
         await interaction.followup.send(
             "⚠️ Something went wrong -- check the logs... 😖"
         )
 
+    def save_config(self) -> None:
+        config.BOT_CONFIG = config.BotConfig(config.BOT_CONFIG.token, {})
+        for guild, discord_config in self.cache.items():
+            config.BOT_CONFIG.guilds[guild.id] = discord_config.guild_config
+        config.CONFIG_FILE.write_text(config.BOT_CONFIG.to_json(indent=2))
+
     async def setup_hook(self) -> None:
         await self.tree.sync()
 
     async def on_ready(self) -> None:
-        for guild_id, guild_config in self.bot_config.guilds.items():
+        for guild_id, guild_config in config.BOT_CONFIG.guilds.items():
             guild = discord.utils.get(self.guilds, id=guild_id)
             admin_notifications_channel = guild.get_channel(
                 guild_config.admin_notifications_channel_id
@@ -120,10 +126,11 @@ class NationWarsBot(discord.Client):
                 admin_notifications_channel,
                 welcome_message,
             )
+        await self.tree.sync()
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         global_role = await guild.create_role(
-            name=GLOBAL_ROLE_NAME,
+            name=nations.GLOBAL_ROLE_NAME,
             hoist=False,
             mentionable=False,
         )
@@ -137,14 +144,11 @@ class NationWarsBot(discord.Client):
         welcome_channel = await guild.create_text_channel(
             name="🚩│join-nation",
             overwrites={
-                guild.default_role: discord.PermissionOverwrite(send_messages=False),
                 guild.me: discord.PermissionOverwrite(send_messages=True),
             },
+            slowmode_delay=60,
         )
-        msg = f"""## Hello, I'm the Nation Wars bot! 🤖
-- **Join your nation** by typing **`/nation join`** and searching for your nation's name in English. I will give you **your nation's role** and access to **your nation's channels** 🚀
-- Optionally, join the special **{GLOBAL_ROLE_NAME}** nation to get access to **all nations' channels** without grabbing the roles."""  # noqa: E501"
-        welcome_message = await welcome_channel.send(msg)
+        welcome_message = await welcome_channel.send(DEFAULT_WELCOME_MESSAGE)
         guild_config = config.GuildConfig(
             global_role.id,
             admin_notifications_channel.id,
@@ -163,12 +167,8 @@ class NationWarsBot(discord.Client):
 
     async def try_get_nation(
         self, guild: discord.Guild, nation: str, create_if_not_exists=False
-    ) -> NationCache:
+    ) -> NationCache | None:
         guild_cache = self.cache[guild]
-
-        # special handling for "Global" nation
-        if nation == GLOBAL_NATION:
-            return NationCache(guild_cache.global_role, None, GLOBAL_NATION_EMOJI)
 
         try:
             return guild_cache.nations[nation]
@@ -178,9 +178,11 @@ class NationWarsBot(discord.Client):
             else:
                 return None
 
-    async def _add_nation(self, guild: discord.Guild, nation: str) -> NationCache:
+    async def _add_nation(
+        self, guild: discord.Guild, nation: str
+    ) -> NationCache | None:
         try:
-            emoji = discord.PartialEmoji(name=NATIONS[nation])
+            emoji = discord.PartialEmoji(name=nations.NATIONS[nation])
         except KeyError:
             return None
 
@@ -220,3 +222,23 @@ class NationWarsBot(discord.Client):
         await guild_cache.admin_notifications_channel.send(
             f"ℹ️ Removed **{nation_cache.role.name}**"
         )
+
+    def try_get_user_nation_role(self, user: discord.Member) -> discord.Role | None:
+        guild_cache = self.cache[user.guild]
+        return next(
+            (
+                nation_cache.role
+                for nation_cache in guild_cache.nations.values()
+                if nation_cache.role in user.roles
+            ),
+            None,
+        )
+
+    def get_global_role(self, guild: discord.Guild) -> discord.Role:
+        return self.cache[guild].global_role
+
+
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True
+BOT = NationWarsBot(intents=intents)
