@@ -18,6 +18,7 @@ class JoinCommand(Command):
         super().__init__(
             name="join", description=self.__doc__, callback=self.join, *args, **kwargs
         )
+        self.guild_only = True
         self.autocomplete("nation")(self.join_autocomplete)
         self._params[
             "nation"
@@ -75,6 +76,7 @@ class LeaveCommand(Command):
         super().__init__(
             name="leave", description=self.__doc__, callback=self.leave, *args, **kwargs
         )
+        self.guild_only = True
         self.autocomplete("nation")(self.leave_autocomplete)
         self._params[
             "nation"
