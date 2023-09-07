@@ -38,7 +38,7 @@ class JoinCommand(Command):
 
         if nation_cache.role in interaction.user.roles:
             await interaction.followup.send(
-                f"ℹ️ Already joined **{nation_cache.role.name}** -- it doesn't stack you know, use **`/nation leave`** first if you absolutely want to re-join 🤣"  # noqa: E501"
+                f"ℹ️ Already joined **{nation_cache.role.name}** -- it doesn't stack you know, use **`/leave`** first if you absolutely want to re-join 🤣"  # noqa: E501"
             )
             return
 
