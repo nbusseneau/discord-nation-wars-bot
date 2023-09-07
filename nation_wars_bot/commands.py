@@ -147,21 +147,23 @@ class AdminCommand(CommandGroup):
         ]
         return choices[:25]
 
-    @app_commands.command(name="edit-welcome")
-    async def edit_welcome(
-        self, interaction: discord.Interaction, line1: str, line2: str, line3: str
+    @app_commands.command(name="replace-welcome-with")
+    async def replace_welcome_with(
+        self, interaction: discord.Interaction, message_id: str
     ) -> None:
-        """Edit welcome message (admin only)
+        """Replace welcome message with a new one (admin only)
 
         Args:
-            line1: First line
-            line2: Second line
-            line3: Third line
+            message_id: ID of the message to copy (message must be in the admin
+                notifications channel)
         """
         await interaction.response.defer(ephemeral=True)
         guild_cache = self.bot.cache[interaction.guild]
+        message = await guild_cache.admin_notifications_channel.fetch_message(
+            int(message_id)
+        )
         guild_cache.welcome_message = await guild_cache.welcome_message.edit(
-            content=f"{line1}\n{line2}\n{line3}"
+            content=message.content
         )
         await interaction.followup.send(
             f"✅ Edited {guild_cache.welcome_message.jump_url}"
