@@ -8,7 +8,7 @@ from nation_wars_bot.nations import NATIONS, GLOBAL_ROLE_NAME
 @app_commands.command()
 @app_commands.guild_only()
 async def join(interaction: discord.Interaction, nation: str) -> None:
-    """🎉 Join nation
+    """🎉 Join your nation
 
     Args:
         nation: 💡 Find your nation by typing its name (in English, sorry!)
@@ -53,7 +53,7 @@ async def _(
 @app_commands.command()
 @app_commands.guild_only()
 async def leave(interaction: discord.Interaction) -> None:
-    """👋 Leave nation"""
+    """👋 Leave current nation"""
     await interaction.response.defer(ephemeral=True)
 
     existing_nation_role = bot.BOT.try_get_user_nation_role(interaction.user)
