@@ -81,7 +81,7 @@ class NationCommand(CommandGroup):
             return
 
         await interaction.user.remove_roles(nation_cache.role)
-        await interaction.followup.send(f"✅ Removed from **{nation_cache.role.name}**")
+        await interaction.followup.send(f"✅ Left **{nation_cache.role.name}**")
 
     @leave.autocomplete("nation")
     async def _(
@@ -162,5 +162,5 @@ class AdminCommand(CommandGroup):
             content=f"{line1}\n{line2}\n{line3}"
         )
         await interaction.followup.send(
-            f"✅ Edited message {guild_cache.welcome_message.jump_url}"
+            f"✅ Edited {guild_cache.welcome_message.jump_url}"
         )
