@@ -4,24 +4,27 @@ from discord import app_commands
 from nation_wars_bot import bot
 
 
-class CommandGroup(app_commands.Group):
+class Command(app_commands.Command):
     def __init__(self, bot: bot.NationWarsBot, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bot = bot
 
 
 @app_commands.guild_only()
-class NationCommand(CommandGroup):
+class JoinCommand(Command):
+    """🎉 Join a nation
+
+    Args:
+        nation: 💡 Find the nation by typing its name (in English, sorry!)
+    """
+
     def __init__(self, *args, **kwargs):
-        super().__init__(name="nation", description="user commands", *args, **kwargs)
+        super().__init__(
+            name="join", description=self.__doc__, callback=self.join, *args, **kwargs
+        )
+        self.autocomplete("nation")(self.join_autocomplete)
 
-    @app_commands.command()
     async def join(self, interaction: discord.Interaction, nation: str) -> None:
-        """🎉 Join a nation
-
-        Args:
-            nation: 💡 Find the nation by typing its name (in English, sorry!)
-        """
         nation = nation.title()
         await interaction.response.defer(ephemeral=True)
         nation_cache = await self.bot.try_get_nation(
@@ -45,8 +48,7 @@ class NationCommand(CommandGroup):
             content=f"✅ Joined **{nation_cache.role.name}**", ephemeral=True
         )
 
-    @join.autocomplete("nation")
-    async def _(
+    async def join_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         guild_cache = self.bot.cache[interaction.guild]
@@ -65,13 +67,22 @@ class NationCommand(CommandGroup):
         ]
         return choices[:25]
 
-    @app_commands.command()
-    async def leave(self, interaction: discord.Interaction, nation: str) -> None:
-        """👋 Leave a nation
 
-        Args:
-            nation: 💡 Find the nation by typing its name (in English, sorry!)
-        """
+@app_commands.guild_only()
+class LeaveCommand(Command):
+    """👋 Leave a nation
+
+    Args:
+        nation: 💡 Find the nation by typing its name (in English, sorry!)
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            name="leave", description=self.__doc__, callback=self.leave, *args, **kwargs
+        )
+        self.autocomplete("nation")(self.leave_autocomplete)
+
+    async def leave(self, interaction: discord.Interaction, nation: str) -> None:
         nation = nation.title()
         await interaction.response.defer(ephemeral=True)
         nation_cache = await self.bot.try_get_nation(interaction.guild, nation)
@@ -85,8 +96,7 @@ class NationCommand(CommandGroup):
         await interaction.user.remove_roles(nation_cache.role)
         await interaction.followup.send(f"✅ Left **{nation_cache.role.name}**")
 
-    @leave.autocomplete("nation")
-    async def _(
+    async def leave_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         guild_cache = self.bot.cache[interaction.guild]
@@ -107,9 +117,15 @@ class NationCommand(CommandGroup):
         return choices[:25]
 
 
+class CommandGroup(app_commands.Group):
+    def __init__(self, bot: bot.NationWarsBot, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bot = bot
+
+
 @app_commands.guild_only()
 @app_commands.default_permissions(manage_channels=True, manage_roles=True)
-class AdminCommand(CommandGroup):
+class AdminCommands(CommandGroup):
     def __init__(self, *args, **kwargs):
         super().__init__(
             name="admin", description="admin-only commands", *args, **kwargs
