@@ -12,7 +12,7 @@ DEFAULT_WELCOME_MESSAGE = f"""# Hello, I'm the Nation Wars bot! 🤖
 
 - Use **`/join`** to **join your nation**: I will give you **your nation's role** and access to **your nation's channels** 🚀
   - ℹ️ You can join only **one** nation at once, use **`/leave`** first to switch!
-- Use **`/global`** to enable the **{nations.GLOBAL_ROLE_NAME}** role and get access to **all nations' channels** (but not the roles!).
+- Use **`/global`** to enable the **{nations.GLOBAL_ROLE_NAME}** role and get access to **all nations' channels**, no matter which nation you joined.
   - 💡 Use  **`/global`** again to disable or re-enable the role at any time!
 
 ## Step-by-step join instructions
