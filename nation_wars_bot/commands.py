@@ -28,9 +28,15 @@ class NationCommand(CommandGroup):
             interaction.guild, nation, create_if_not_exists=True
         )
 
-        if nation_cache is None or nation_cache.role in interaction.user.roles:
+        if nation_cache is None:
             await interaction.followup.send(
-                f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤",  # noqa: E501
+                f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤"  # noqa: E501
+            )
+            return
+
+        if nation_cache.role in interaction.user.roles:
+            await interaction.followup.send(
+                f"ℹ️ Already joined **{nation_cache.role.name}** -- it doesn't stack you know, use **`/nation leave`** first if you absolutely want to re-join 🤣"  # noqa: E501"
             )
             return
 
@@ -47,10 +53,6 @@ class NationCommand(CommandGroup):
         choices = [
             app_commands.Choice(name=f"{emoji} {nation}", value=nation)
             for nation, emoji in bot.NATIONS.items()
-            if not (
-                nation in guild_cache.nations
-                and guild_cache.nations[nation].role in interaction.user.roles
-            )
         ]
         # special handling for "Global" nation
         if guild_cache.global_role not in interaction.user.roles:
@@ -76,7 +78,7 @@ class NationCommand(CommandGroup):
 
         if nation_cache is None or nation_cache.role not in interaction.user.roles:
             await interaction.followup.send(
-                f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤",  # noqa: E501
+                f"❌ Invalid value **{nation}** -- please pick a valid value from the list 😤"  # noqa: E501
             )
             return
 
