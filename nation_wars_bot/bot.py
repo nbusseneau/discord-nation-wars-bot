@@ -106,7 +106,7 @@ class NationWarsBot(discord.Client):
 
     async def setup_hook(self) -> None:
         await self.tree.sync()
-        self.sync_flags.start()
+        # self.sync_flags.start()
 
     async def load_config(self) -> None:
         self.cache = {}
@@ -137,7 +137,7 @@ class NationWarsBot(discord.Client):
     async def on_ready(self) -> None:
         await self.load_config()
         await self.tree.sync()
-        await self.sync_flags()
+        # await self.sync_flags()
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         global_role = await guild.create_role(
@@ -210,21 +210,21 @@ class NationWarsBot(discord.Client):
         if new_name != after.display_name:
             await after.edit(nick=new_name)
 
-    @tasks.loop(hours=1)
-    async def sync_flags(self):
-        for guild in self.guilds:
-            for member in guild.members:
-                nation_cache = self.try_get_user_nation(member)
-                if (
-                    nation_cache is not None
-                    and str(nation_cache.emoji) not in member.display_name
-                ):
-                    try:
-                        await member.edit(
-                            nick=f"{nation_cache.emoji} {member.display_name}"
-                        )
-                    except:  # noqa: E722
-                        pass
+    # @tasks.loop(hours=1)
+    # async def sync_flags(self):
+    #     for guild in self.guilds:
+    #         for member in guild.members:
+    #             nation_cache = self.try_get_user_nation(member)
+    #             if (
+    #                 nation_cache is not None
+    #                 and str(nation_cache.emoji) not in member.display_name
+    #             ):
+    #                 try:
+    #                     await member.edit(
+    #                         nick=f"{nation_cache.emoji} {member.display_name}"
+    #                     )
+    #                 except:  # noqa: E722
+    #                     pass
 
     async def try_get_nation(
         self, guild: discord.Guild, nation: str, create_if_not_exists=False
