@@ -2,6 +2,7 @@ import logging
 
 import discord
 from discord import app_commands
+from discord.ext import tasks
 
 from nation_wars_bot import config, commands, nations
 
@@ -45,6 +46,10 @@ class NationCache:
         emoji = discord.PartialEmoji(name=nation_config.emoji)
         return cls(role, category, emoji)
 
+    def __eq__(self, __value: object) -> bool:
+        if isinstance(__value, NationCache):
+            return self.role == __value.role
+
 
 class GuildCache:
     def __init__(
@@ -81,13 +86,13 @@ class GuildCache:
 class NationWarsBot(discord.Client):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.cache: dict[discord.Guild, GuildCache] = {}
         self.tree = app_commands.CommandTree(self)
         self.tree.add_command(commands.join)
         self.tree.add_command(commands.leave)
         self.tree.add_command(commands.global_command)
         self.tree.add_command(commands.admin)
         self.tree.on_error = self._tree_error_handler
-        self.cache: dict[discord.Guild, GuildCache] = {}
 
     async def _tree_error_handler(
         self,
@@ -99,16 +104,12 @@ class NationWarsBot(discord.Client):
             "⚠️ Something went wrong -- check the logs... 😖"
         )
 
-    def save_config(self) -> None:
-        config.BOT_CONFIG = config.BotConfig(config.BOT_CONFIG.token, {})
-        for guild, discord_config in self.cache.items():
-            config.BOT_CONFIG.guilds[guild.id] = discord_config.guild_config
-        config.CONFIG_FILE.write_text(config.BOT_CONFIG.to_json(indent=2))
-
     async def setup_hook(self) -> None:
         await self.tree.sync()
+        self.sync_flags.start()
 
-    async def on_ready(self) -> None:
+    async def load_config(self) -> None:
+        self.cache = {}
         for guild_id, guild_config in config.BOT_CONFIG.guilds.items():
             guild = discord.utils.get(self.guilds, id=guild_id)
             admin_notifications_channel = guild.get_channel(
@@ -126,7 +127,17 @@ class NationWarsBot(discord.Client):
                 admin_notifications_channel,
                 welcome_message,
             )
+
+    def save_config(self) -> None:
+        config.BOT_CONFIG = config.BotConfig(config.BOT_CONFIG.token, {})
+        for guild, discord_config in self.cache.items():
+            config.BOT_CONFIG.guilds[guild.id] = discord_config.guild_config
+        config.CONFIG_FILE.write_text(config.BOT_CONFIG.to_json(indent=2))
+
+    async def on_ready(self) -> None:
+        await self.load_config()
         await self.tree.sync()
+        await self.sync_flags()
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         global_role = await guild.create_role(
@@ -164,6 +175,56 @@ class NationWarsBot(discord.Client):
             welcome_message,
         )
         self.save_config()
+
+    async def on_member_update(
+        self, before: discord.Member, after: discord.Member
+    ) -> None:
+        before_nation_cache = self.try_get_user_nation(before)
+        after_nation_cache = self.try_get_user_nation(after)
+
+        user_left_nation = (
+            before_nation_cache is not None and after_nation_cache is None
+        )
+        user_joined_nation = (
+            before_nation_cache is None and after_nation_cache is not None
+        )
+        user_switched_nation = before_nation_cache != after_nation_cache
+
+        user_changed_name = before.display_name != after.display_name
+        before_nation_in_username = (
+            before_nation_cache is not None
+            and str(before_nation_cache.emoji) in after.display_name
+        )
+        after_nation_not_in_username = (
+            after_nation_cache is not None
+            and str(after_nation_cache.emoji) not in after.display_name
+        )
+
+        new_name = after.display_name
+        if (user_left_nation or user_switched_nation) and before_nation_in_username:
+            new_name = new_name.strip(str(before_nation_cache.emoji))
+        if (
+            user_joined_nation or user_changed_name or user_switched_nation
+        ) and after_nation_not_in_username:
+            new_name = f"{after_nation_cache.emoji} {new_name}"
+        if new_name != after.display_name:
+            await after.edit(nick=new_name)
+
+    @tasks.loop(hours=1)
+    async def sync_flags(self):
+        for guild in self.guilds:
+            for member in guild.members:
+                nation_cache = self.try_get_user_nation(member)
+                if (
+                    nation_cache is not None
+                    and str(nation_cache.emoji) not in member.display_name
+                ):
+                    try:
+                        await member.edit(
+                            nick=f"{nation_cache.emoji} {member.display_name}"
+                        )
+                    except:  # noqa: E722
+                        pass
 
     async def try_get_nation(
         self, guild: discord.Guild, nation: str, create_if_not_exists=False
@@ -223,11 +284,11 @@ class NationWarsBot(discord.Client):
             f"ℹ️ Removed **{nation_cache.role.name}**"
         )
 
-    def try_get_user_nation_role(self, user: discord.Member) -> discord.Role | None:
+    def try_get_user_nation(self, user: discord.Member) -> NationCache | None:
         guild_cache = self.cache[user.guild]
         return next(
             (
-                nation_cache.role
+                nation_cache
                 for nation_cache in guild_cache.nations.values()
                 if nation_cache.role in user.roles
             ),

@@ -15,10 +15,10 @@ async def join(interaction: discord.Interaction, nation: str) -> None:
     """
     await interaction.response.defer(ephemeral=True)
 
-    existing_nation_role = bot.BOT.try_get_user_nation_role(interaction.user)
-    if existing_nation_role is not None:
+    existing_nation = bot.BOT.try_get_user_nation(interaction.user)
+    if existing_nation is not None:
         await interaction.followup.send(
-            f"⛔ Already joined **{existing_nation_role.name}** -- you can join only **one** nation at once, use **`/leave`** first to switch!"  # noqa: E501"
+            f"⛔ Already joined **{existing_nation.role.name}** -- you can join only **one** nation at once, use **`/leave`** first to switch!"  # noqa: E501"
         )
         return
 
@@ -56,15 +56,15 @@ async def leave(interaction: discord.Interaction) -> None:
     """👋 Leave current nation"""
     await interaction.response.defer(ephemeral=True)
 
-    existing_nation_role = bot.BOT.try_get_user_nation_role(interaction.user)
-    if existing_nation_role is None:
+    existing_nation = bot.BOT.try_get_user_nation(interaction.user)
+    if existing_nation is None:
         await interaction.followup.send(
             "ℹ️ You haven't joined any nation -- nothing to do 😴"
         )
         return
 
-    await interaction.user.remove_roles(existing_nation_role)
-    await interaction.followup.send(f"✅ Left **{existing_nation_role.name}**")
+    await interaction.user.remove_roles(existing_nation.role)
+    await interaction.followup.send(f"✅ Left **{existing_nation.role.name}**")
 
 
 @app_commands.command(

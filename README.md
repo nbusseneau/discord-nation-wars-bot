@@ -10,6 +10,7 @@
 - General
   - Manage Roles
   - Manage Channels
+  - Manage Nicknames
 - Text
   - Send Messages
   - Read Message History
