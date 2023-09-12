@@ -208,7 +208,13 @@ class NationWarsBot(discord.Client):
         ) and after_nation_not_in_username:
             new_name = f"{after_nation_cache.emoji} {new_name}"
         if new_name != after.display_name:
-            await after.edit(nick=new_name)
+            try:
+                await after.edit(nick=new_name)
+            except discord.errors.Forbidden as e:
+                logging.warning(f"`{e}` while trying to edit `{after}`'s name")
+                logging.warning(
+                    "note that the bot can never edit the owner's name, even with full permissions"  # noqa: E501
+                )
 
     @tasks.loop(hours=1)
     async def sync_flags(self):
@@ -223,8 +229,13 @@ class NationWarsBot(discord.Client):
                         await member.edit(
                             nick=f"{nation_cache.emoji} {member.display_name}"
                         )
-                    except:  # noqa: E722
-                        pass
+                    except discord.errors.Forbidden as e:
+                        logging.warning(f"`{e}` while trying to edit `{member}`'s name")
+                        logging.warning(
+                            "note that the bot can never edit the owner's name, even with full permissions"  # noqa: E501
+                        )
+                    except Exception as e:  # noqa: E722
+                        logging.exception(e)
 
     async def try_get_nation(
         self, guild: discord.Guild, nation: str, create_if_not_exists=False
