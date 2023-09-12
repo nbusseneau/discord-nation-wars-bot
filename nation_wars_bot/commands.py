@@ -125,7 +125,7 @@ class Admin(app_commands.Group):
             for nation, nation_cache in guild_cache.nations.items()
             if current.lower() in nation.lower()
         ]
-        return choices[:25]
+        return sorted(choices[:25], key=lambda c: c.name)
 
     @app_commands.command(name="reset-welcome")
     async def reset_welcome(self, interaction: discord.Interaction) -> None:
