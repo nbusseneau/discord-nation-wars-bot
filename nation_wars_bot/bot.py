@@ -230,10 +230,11 @@ class NationWarsBot(discord.Client):
                             nick=f"{nation_cache.emoji} {member.display_name}"
                         )
                     except discord.errors.Forbidden as e:
-                        logging.warning(f"`{e}` while trying to edit `{member}`'s name")
-                        logging.warning(
-                            "note that the bot can never edit the owner's name, even with full permissions"  # noqa: E501
-                        )
+                        # bot can never edit owner's name, even with full permissions
+                        if member is not guild.owner:
+                            logging.warning(
+                                f"`{e}` while trying to edit `{member}`'s name"
+                            )
                     except Exception as e:  # noqa: E722
                         logging.exception(e)
 
