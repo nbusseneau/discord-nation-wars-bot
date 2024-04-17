@@ -262,7 +262,7 @@ class NationWarsBot(discord.Client):
         guild_cache = self.cache[guild]
         name = f"{emoji} {nation}"
 
-        role = await guild.create_role(name=name, hoist=True, mentionable=True)
+        role = await guild.create_role(name=name, hoist=False, mentionable=True)
         category = await guild.create_category(
             name=name,
             overwrites={
