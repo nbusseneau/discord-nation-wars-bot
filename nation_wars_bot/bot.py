@@ -28,13 +28,13 @@ class NationCache:
     def __init__(
         self,
         role: discord.Role,
-        category: discord.CategoryChannel,
+        channel: discord.TextChannel,
         emoji: discord.PartialEmoji,
     ) -> None:
-        if category is not None:
-            self.nation_config = config.NationConfig(role.id, category.id, str(emoji))
+        if channel is not None:
+            self.nation_config = config.NationConfig(role.id, channel.id, str(emoji))
         self.role = role
-        self.category = category
+        self.channel = channel
         self.emoji = emoji
 
     @classmethod
@@ -42,9 +42,9 @@ class NationCache:
         cls, guild: discord.Guild, nation_config: config.NationConfig
     ) -> "NationCache":
         role = guild.get_role(nation_config.role_id)
-        category = guild.get_channel(nation_config.category_id)
+        channel = guild.get_channel(nation_config.channel_id)
         emoji = discord.PartialEmoji(name=nation_config.emoji)
-        return cls(role, category, emoji)
+        return cls(role, channel, emoji)
 
     def __eq__(self, __value: object) -> bool:
         if isinstance(__value, NationCache):
@@ -59,11 +59,13 @@ class GuildCache:
         global_role: discord.Role,
         admin_notifications_channel: discord.TextChannel,
         welcome_message: discord.Message,
+        nations_category: discord.CategoryChannel,
     ) -> None:
         self.guild_config = guild_config
         self.global_role = global_role
         self.admin_notifications_channel = admin_notifications_channel
         self.welcome_message = welcome_message
+        self.nations_category = nations_category
         self.nations: dict[str, NationCache] = {}
         for nation, nation_config in guild_config.nations.items():
             self.nations[nation] = NationCache.from_config(guild, nation_config)
@@ -72,10 +74,10 @@ class GuildCache:
         self,
         nation: str,
         role: discord.Role,
-        category: discord.CategoryChannel,
+        channel: discord.TextChannel,
         emoji: discord.PartialEmoji,
     ) -> None:
-        self.nations[nation] = NationCache(role, category, emoji)
+        self.nations[nation] = NationCache(role, channel, emoji)
         self.guild_config.nations[nation] = self.nations[nation].nation_config
 
     def remove_nation(self, nation: str) -> None:
@@ -119,6 +121,9 @@ class NationWarsBot(discord.Client):
             welcome_message = await welcome_channel.fetch_message(
                 guild_config.welcome_message_id
             )
+            nations_category = discord.utils.get(
+                guild.categories, id=guild_config.nations_category_id
+            )
             global_role = guild.get_role(guild_config.global_role_id)
             self.cache[guild] = GuildCache(
                 guild,
@@ -126,6 +131,7 @@ class NationWarsBot(discord.Client):
                 global_role,
                 admin_notifications_channel,
                 welcome_message,
+                nations_category,
             )
 
     def save_config(self) -> None:
@@ -159,12 +165,14 @@ class NationWarsBot(discord.Client):
             },
             slowmode_delay=60,
         )
+        nations_category = await guild.create_category(name="— ↓ Nations ↓ —")
         welcome_message = await welcome_channel.send(DEFAULT_WELCOME_MESSAGE)
         guild_config = config.GuildConfig(
             global_role.id,
             admin_notifications_channel.id,
             welcome_channel.id,
             welcome_message.id,
+            nations_category.id,
             {},
         )
         self.cache[guild] = GuildCache(
@@ -173,6 +181,7 @@ class NationWarsBot(discord.Client):
             global_role,
             admin_notifications_channel,
             welcome_message,
+            nations_category,
         )
         self.save_config()
 
@@ -263,8 +272,9 @@ class NationWarsBot(discord.Client):
         name = f"{emoji} {nation}"
 
         role = await guild.create_role(name=name, hoist=False, mentionable=True)
-        category = await guild.create_category(
-            name=name,
+        channel = await guild.create_text_channel(
+            name=f"{emoji}│{nation}",
+            category=guild_cache.nations_category,
             overwrites={
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
                 guild.me: discord.PermissionOverwrite(view_channel=True),
@@ -272,11 +282,8 @@ class NationWarsBot(discord.Client):
                 guild_cache.global_role: discord.PermissionOverwrite(view_channel=True),
             },
         )
-        await guild.create_text_channel(name=f"{emoji}│{nation}", category=category)
-        await guild.create_voice_channel(name="players", category=category)
-        await guild.create_voice_channel(name="spectators", category=category)
 
-        guild_cache.add_nation(nation, role, category, emoji)
+        guild_cache.add_nation(nation, role, channel, emoji)
         self.save_config()
         await guild_cache.admin_notifications_channel.send(f"ℹ️ Added **{name}**")
         return guild_cache.nations[nation]
@@ -286,9 +293,7 @@ class NationWarsBot(discord.Client):
         nation_cache = guild_cache.nations[nation]
 
         await nation_cache.role.delete()
-        for channel in nation_cache.category.channels:
-            await channel.delete()
-        await nation_cache.category.delete()
+        await nation_cache.channel.delete()
 
         guild_cache.remove_nation(nation)
         self.save_config()

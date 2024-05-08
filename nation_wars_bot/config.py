@@ -7,7 +7,7 @@ import dataclasses_json
 @dataclasses.dataclass
 class NationConfig(dataclasses_json.DataClassJsonMixin):
     role_id: int
-    category_id: int
+    channel_id: int
     emoji: str
 
 
@@ -17,6 +17,7 @@ class GuildConfig(dataclasses_json.DataClassJsonMixin):
     admin_notifications_channel_id: int
     welcome_channel_id: int
     welcome_message_id: int
+    nations_category_id: int
     nations: dict[str, NationConfig]
 
 
